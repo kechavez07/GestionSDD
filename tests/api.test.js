@@ -36,13 +36,13 @@ before(async () => {
 after(() => new Promise((resolve) => server.close(resolve)));
 
 describe('API REST /tasks (contrato plan.md)', () => {
-  test('GET /health responde ok', async () => {
+  test('[NFR-001][NFR-004] GET /health responde ok con cabeceras seguras', async () => {
     const res = await call('GET', '/health');
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   });
 
-  test('flujo completo: crear → listar → editar → cambiar estado → eliminar', async () => {
+  test('[US1-US4] flujo completo: crear → listar → editar → cambiar estado → eliminar', async () => {
     const created = await call('POST', '/tasks', base);
     assert.equal(created.status, 201);
     const { id } = created.body;
@@ -66,39 +66,39 @@ describe('API REST /tasks (contrato plan.md)', () => {
     assert.equal((await call('GET', `/tasks/${id}`)).status, 404);
   });
 
-  test('400 con detalles al crear tarea inválida', async () => {
+  test('[FR-004] 400 con detalles al crear tarea inválida', async () => {
     const res = await call('POST', '/tasks', { title: '' });
     assert.equal(res.status, 400);
     assert.ok(Array.isArray(res.body.details));
   });
 
-  test('400 con JSON mal formado', async () => {
+  test('[FR-004] 400 con JSON mal formado', async () => {
     const res = await call('POST', '/tasks', undefined, '{"title":');
     assert.equal(res.status, 400);
     assert.equal(res.body.error, 'JSON mal formado');
   });
 
-  test('400 con filtro inválido', async () => {
+  test('[FR-006] 400 con filtro inválido', async () => {
     assert.equal((await call('GET', '/tasks?priority=urgente')).status, 400);
   });
 
-  test('409 ante transición de estado no permitida', async () => {
+  test('[FR-007] 409 ante transición de estado no permitida', async () => {
     const { body } = await call('POST', '/tasks', base);
     await call('PATCH', `/tasks/${body.id}/status`, { status: 'completada' });
     const res = await call('PATCH', `/tasks/${body.id}/status`, { status: 'pendiente' });
     assert.equal(res.status, 409);
   });
 
-  test('POST sin cuerpo devuelve 400', async () => {
+  test('[FR-004] POST sin cuerpo devuelve 400', async () => {
     assert.equal((await call('POST', '/tasks')).status, 400);
   });
 
-  test('413 si el cuerpo excede el límite', async () => {
+  test('[NFR-004] 413 si el cuerpo excede el límite', async () => {
     const res = await call('POST', '/tasks', { ...base, description: 'x'.repeat(MAX_BODY_BYTES) });
     assert.equal(res.status, 413);
   });
 
-  test('404 en rutas desconocidas y 405 en métodos no soportados', async () => {
+  test('[FR-012] 404 en rutas desconocidas y 405 en métodos no soportados', async () => {
     assert.equal((await call('GET', '/usuarios')).status, 404);
     assert.equal((await call('GET', '/tasks/a/b/c')).status, 404);
     assert.equal((await call('GET', '/tasks/a/otra')).status, 404);
@@ -106,10 +106,37 @@ describe('API REST /tasks (contrato plan.md)', () => {
     assert.equal((await call('POST', '/tasks/abc')).status, 405);
   });
 
-  test('500 genérico sin filtrar detalles internos', async () => {
+  test('[NFR-004] 500 genérico sin filtrar detalles internos', async () => {
     const res = await call('GET', '/tasks/boom');
     assert.equal(res.status, 500);
     assert.equal(res.body.error, 'Error interno del servidor');
     assert.ok(!JSON.stringify(res.body).includes('secreto'));
+  });
+});
+
+describe('Rendimiento (NFR-002)', () => {
+  test('[NFR-002] lista 1 000 tareas filtradas en < 200 ms (p95)', async () => {
+    const service = new TaskService(new TaskRepository());
+    for (let i = 0; i < 1000; i++) {
+      const month = String(1 + (i % 12)).padStart(2, '0');
+      const day = String(1 + (i % 28)).padStart(2, '0');
+      service.create({ ...base, title: `T${i}`, subject: i % 2 ? 'Redes' : 'Gestión', dueDate: `2026-${month}-${day}` });
+    }
+    const perfServer = createApp(service);
+    await new Promise((resolve) => perfServer.listen(0, resolve));
+    try {
+      const url = `http://127.0.0.1:${perfServer.address().port}/tasks?subject=redes`;
+      const times = [];
+      for (let i = 0; i < 20; i++) {
+        const start = performance.now();
+        const res = await fetch(url);
+        assert.equal((await res.json()).length, 500);
+        times.push(performance.now() - start);
+      }
+      times.sort((a, b) => a - b);
+      assert.ok(times[18] < 200, `p95 = ${times[18].toFixed(1)} ms`);
+    } finally {
+      await new Promise((resolve) => perfServer.close(resolve));
+    }
   });
 });

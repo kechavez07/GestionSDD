@@ -1,89 +1,98 @@
 # Reporte de Implementación – Iteración 1
 
-> **Comando SDD:** `/speckit-implement`
-> **Rama:** `001-gestion-tareas` | **Fecha:** 2026-10-21
-> **Entradas:** [`tasks.md`](./tasks.md), [`plan.md`](./plan.md), [`constitution.md`](../../.specify/memory/constitution.md)
+> **Fase SDD:** 4 – Implementar | **Comando Spec Kit:** `/speckit-implement`
+> **Rama:** `001-gestion-tareas` | **Fecha:** 2026-10-21 / 2026-10-22
+> **Entradas:** [`tasks.md`](./tasks.md) · [`plan.md`](./plan.md) · [`constitution.md`](../../.specify/memory/constitution.md) · [`AGENTS.md`](../../AGENTS.md)
 
 ---
 
 ## 1. Resumen
 
-El agente implementó las **26 tareas** de `tasks.md` en el orden de fases que se definió (Setup → Fundamentos → US1 → US2 → US3 → US4 → Transversal), con el ciclo **Rojo → Verde → Refactor** que exige la Constitución. Se entrega una API REST funcional que cubre las historias US1–US4.
+El agente ejecutó las **26 tareas** de `tasks.md` **una a la vez**, en el orden de dependencias (Preparación → Fundamentos → US1 → US2 → US3 → US4 → Persistencia, seguridad y validación), con el ciclo **Rojo → Verde → Refactor** que exige la Constitución.
 
 | Métrica | Valor |
 |---|---|
 | Tareas completadas | 26 / 26 (100 %) |
-| Archivos de código fuente | 5 (`src/`) – 399 líneas |
-| Archivos de prueba | 3 (`tests/`) – 325 líneas |
-| Pruebas automatizadas | **35 pasan / 0 fallan** |
+| Código fuente (`src/`) | 5 archivos, 399 líneas |
+| Pruebas (`tests/`) | 3 archivos, 352 líneas |
+| Pruebas automatizadas | **36 pasan / 0 fallan** (8 suites) |
+| Pruebas con el ID del requisito en el nombre | 36 / 36 |
 | Dependencias externas | 0 |
 | Endpoints | 7 (6 de negocio + `/health`) |
 
-## 2. Archivos producidos
+## 2. Cómo se le pidió el trabajo al agente
 
-| Archivo | Capa | Responsabilidad | Tareas |
+Cada tarea se pidió con el prompt de `AGENTS.md`, por ejemplo:
+
+```text
+Lee constitution.md, spec.md y plan.md de specs/001-gestion-tareas/.
+Implementa SOLO la tarea T018 de tasks.md.
+No modifiques otros archivos fuera de lo que T018 requiere.
+Al terminar, ejecuta los tests y marca T018 como completada.
+Si encuentras algo que contradice la spec, detente y pregúntame.
+```
+
+## 3. Archivos producidos (trazabilidad)
+
+| Archivo | Capa | Tareas | Requisitos |
 |---|---|---|---|
-| `src/domain/task.js` | Dominio | Entidad Tarea, validación, fechas y máquina de estados | T005 |
-| `src/repository/taskRepository.js` | Persistencia | `Map` en memoria + JSON con escritura atómica | T006, T022 |
-| `src/services/taskService.js` | Servicios | Casos de uso: crear, listar, obtener, editar, cambiar estado y eliminar | T011, T014, T017, T018, T021 |
-| `src/http/app.js` | HTTP | Enrutamiento, parseo JSON, límite de 10 KB y mapeo de errores | T007, T012, T015, T019, T021 |
-| `src/server.js` | Arranque | Configuración por variables de entorno | T008 |
-| `tests/domain.test.js` | Pruebas | 14 pruebas unitarias del dominio | T004 |
-| `tests/service.test.js` | Pruebas | 11 pruebas de servicio y persistencia | T009, T013, T016, T020, T022 |
-| `tests/api.test.js` | Pruebas | 10 pruebas de integración HTTP | T010, T016, T020, T023 |
+| `src/domain/task.js` | Dominio | T005 | FR-001, FR-002, FR-003, FR-004, FR-007, FR-008 |
+| `src/repository/taskRepository.js` | Persistencia | T006, T022 | FR-010 |
+| `src/services/taskService.js` | Servicios | T011, T014, T017, T018, T021 | FR-005 a FR-009, FR-011 |
+| `src/http/app.js` | HTTP | T007, T012, T015, T019, T021 | FR-004, FR-012, NFR-001, NFR-004 |
+| `src/server.js` | Arranque | T008 | Constitución V |
+| `tests/domain.test.js` | Pruebas (14) | T004 | FR-001 a FR-004, FR-007, FR-008 |
+| `tests/service.test.js` | Pruebas (11) | T009, T013, T016, T020, T022 | FR-001, FR-002, FR-004 a FR-011 |
+| `tests/api.test.js` | Pruebas (11) | T010, T016, T020, T023, T024 | FR-004, FR-006, FR-007, FR-012, NFR-001, NFR-002, NFR-004 |
+| `AGENTS.md`, `CLAUDE.md` | Instrucciones | T003 | Constitución §5 |
 
-## 3. Bitácora de ejecución por fase
+## 4. Bitácora por fase
 
-### Fase 1 – Setup ✅
-Se crearon la estructura de carpetas y `package.json` con los scripts `start`, `test` y `coverage`, y se redactó la constitución.
+| Fase | Resultado | Notas |
+|---|---|---|
+| 1. Preparación | ✅ | Estructura, `package.json` y constitución |
+| 2. Fundamentos | ✅ | `isValidDate` rechaza fechas que no existen (`2026-02-30`). El repositorio devuelve copias (ADR-05). |
+| 3. US1 Registrar | ✅ | 201 con UUID, `pendiente` y `media` por defecto. Los datos inválidos dan 400 con `details[]`. |
+| 4. US2 Consultar | ✅ | Orden por `dueDate` y luego por el peso de la prioridad. Filtro de materia sin distinguir mayúsculas. |
+| 5. US3 Editar/estado | ✅ | Endpoint de estado separado (ADR-03). Salir de `completada` da 409. |
+| 6. US4 Eliminar | ✅ | 204, o 404 si la tarea no existe. |
+| 7. Persistencia, seguridad y validación | ✅ | JSON atómico, 413, 500 genérico, rendimiento y smoke test. |
 
-### Fase 2 – Fundamentos ✅
-- Primero se escribieron las pruebas de dominio (**rojo**). Después se implementó `task.js` hasta que pasaron (**verde**).
-- `isValidDate` verifica el formato `YYYY-MM-DD` **y** que la fecha exista en el calendario (rechaza `2026-02-30`), comparando contra `toISOString()`.
-- El repositorio devuelve **copias** de los objetos para que no se pueda mutar su estado interno.
+## 5. Verificación iterativa: lo que se descubrió al implementar
 
-### Fase 3 – US1 Registrar ✅
-`POST /tasks` responde 201 con `id` UUID, `status: "pendiente"` y `priority: "media"` por defecto. Los datos inválidos producen 400 con `details[]`.
+La guía SDD dice: *"si se descubrió algo nuevo durante la implementación → **se actualiza la spec**, no solo el código"*. Así se aplicó:
 
-### Fase 4 – US2 Consultar ✅
-El orden es por `dueDate` ascendente y, en caso de empate, por el peso de la prioridad (`alta=0`, `media=1`, `baja=2`). El filtro de `subject` no distingue mayúsculas. Los filtros inválidos producen 400.
+| # | Descubrimiento | Detectado por | Cambio en el código | Cambio en la spec/plan |
+|---|---|---|---|---|
+| 1 | Con un cuerpo > 10 KB, `req.destroy()` cortaba la conexión y el cliente veía *"fetch failed"* en lugar de 413. | Prueba `[NFR-004] 413…` en **rojo** | Se descarta el resto del cuerpo y se responde 413 | Se agregó **ADR-06** en `plan.md` |
+| 2 | Había una rama muerta en `update()` (`typeof … === 'string'`), con cobertura de ramas de 97,37 %. | `npm run coverage` | Se simplificó a `.trim()` | — (refactor sin cambio de comportamiento) |
+| 3 | Las respuestas 404/405 a rutas y métodos desconocidos estaban implementadas pero **no especificadas** (*spec drift*). | Revisión de trazabilidad | — | Se agregó **FR-012** a `spec.md` |
+| 4 | NFR-002 (rendimiento) solo se había medido a mano. | Revisión contra la guía (requisitos verificables) | Se agregó la prueba automatizada `[NFR-002]` | Se agregó la tarea **T024** |
+| 5 | El script `node --test tests/` falla en Node 22, que espera un archivo y no una carpeta. | Primera ejecución | Se cambió al patrón `"tests/**/*.test.js"` | — |
 
-### Fase 5 – US3 Editar / Estado ✅
-- `PATCH /tasks/:id` hace una edición parcial y **rechaza** `status` (lo envía al endpoint dedicado).
-- `PATCH /tasks/:id/status` aplica las transiciones de FR-007. Desde `completada` responde **409**.
-
-### Fase 6 – US4 Eliminar ✅
-`DELETE /tasks/:id` responde 204, y 404 si la tarea no existe.
-
-### Fase 7 – Transversal ✅
-Persistencia atómica (`tasks.json.tmp` → `rename`), pruebas de seguridad, README y medición de cobertura.
-
-## 4. Verificación iterativa (bucle Tareas ↔ Implementar)
-
-Durante la implementación, el ciclo de verificación encontró y corrigió dos desviaciones antes de cerrar la iteración:
-
-| # | Hallazgo | Detectado por | Corrección |
-|---|---|---|---|
-| 1 | Con un cuerpo > 10 KB, el servidor cortaba el socket (`req.destroy()`) y el cliente recibía *"fetch failed"* en lugar de **413** (incumplía NFR-004 / Principio VI). | Prueba `413 si el cuerpo excede el límite` (T023) en **rojo** | Se descarta el resto del cuerpo sin cortar la conexión y se responde 413 al terminar la lectura. |
-| 2 | La cobertura de ramas de `taskService.js` era de 97,37 % por una rama muerta (`typeof … === 'string'`): todos los campos editables ya llegan validados como texto. | `npm run coverage` (T024) | Se simplificó a `changes[key].trim()` y la cobertura de ramas quedó en 100 %. |
-
-Además, el script de pruebas `node --test tests/` no funcionaba en Node 22 (busca un módulo, no una carpeta). Se corrigió al patrón `"tests/**/*.test.js"`.
-
-## 5. Evidencia de ejecución
+## 6. Evidencia
 
 ### Pruebas
 
 ```
 $ npm test
-# tests 35
-# suites 7
-# pass 35
+# tests 36
+# suites 8
+# pass 36
 # fail 0
-# cancelled 0
-# skipped 0
 ```
 
-### Prueba manual (smoke test) del servidor real
+Extracto con la trazabilidad en los nombres:
+
+```
+ok - [FR-005] US2: lista ordenada por fecha de entrega y prioridad
+ok - [FR-007] 409 ante transición de estado no permitida
+ok - [FR-010] persiste y recarga tareas desde disco
+ok - [NFR-002] lista 1 000 tareas filtradas en < 200 ms (p95)
+ok - [NFR-004] 500 genérico sin filtrar detalles internos
+```
+
+### Validación manual del servidor real
 
 ```
 $ PORT=3917 node src/server.js
@@ -96,20 +105,16 @@ $ curl -X POST localhost:3917/tasks -H "Content-Type: application/json" \
  "createdAt":"2026-10-22T04:30:31.177Z","updatedAt":"2026-10-22T04:30:31.177Z"}
 ```
 
-Se verificó que el archivo `data/tasks.json` contenía la tarea después de la petición (FR-010).
+Se comprobó que `data/tasks.json` contenía la tarea (FR-010, CA-15).
 
-## 6. Cómo reproducir
+## 7. Desviaciones del proceso (honestidad del registro)
+
+- El código de la iteración se subió al repositorio en **un commit inicial**, y no en un commit por tarea como recomienda la guía. Para la iteración 2 se exigirá un commit por tarea que cite su ID (por ejemplo `T018: changeStatus con TransitionError`).
+
+## 8. Cómo reproducir
 
 ```bash
-cd taskflow-sdd
 npm test
 npm run coverage
 npm start
 ```
-
-## 7. Pendiente para la iteración 2 (fuera de alcance)
-
-- Usuarios y autenticación (multiusuario).
-- Migrar la persistencia a una base de datos (SQLite o PostgreSQL).
-- Recordatorios de entregas próximas.
-- Cliente web.

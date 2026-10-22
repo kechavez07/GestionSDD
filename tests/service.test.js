@@ -17,19 +17,19 @@ describe('Servicio de tareas', () => {
     service = new TaskService(new TaskRepository(), () => new Date('2026-10-21T10:00:00Z'));
   });
 
-  test('US1: crea y recupera una tarea', () => {
+  test('[FR-001][FR-002] US1: crea y recupera una tarea', () => {
     const created = service.create(base);
     assert.deepEqual(service.get(created.id), created);
   });
 
-  test('US2: lista ordenada por fecha de entrega y prioridad', () => {
+  test('[FR-005] US2: lista ordenada por fecha de entrega y prioridad', () => {
     service.create({ ...base, title: 'C', dueDate: '2026-12-01' });
     service.create({ ...base, title: 'B', dueDate: '2026-11-01', priority: 'baja' });
     service.create({ ...base, title: 'A', dueDate: '2026-11-01', priority: 'alta' });
     assert.deepEqual(service.list().map((t) => t.title), ['A', 'B', 'C']);
   });
 
-  test('US2: filtra por estado, prioridad y materia (sin distinguir mayúsculas)', () => {
+  test('[FR-006] US2: filtra por estado, prioridad y materia (sin distinguir mayúsculas)', () => {
     const a = service.create({ ...base, subject: 'Redes', priority: 'alta' });
     service.create({ ...base, subject: 'Gestión' });
     service.changeStatus(a.id, 'en_progreso');
@@ -39,7 +39,7 @@ describe('Servicio de tareas', () => {
     assert.equal(service.list({ subject: 'Física' }).length, 0);
   });
 
-  test('US2: rechaza filtros inválidos', () => {
+  test('[FR-006][FR-004] US2: rechaza filtros inválidos', () => {
     assert.throws(() => service.list({ status: 'x', priority: 'y' }), (err) => {
       assert.ok(err instanceof ValidationError);
       assert.equal(err.details.length, 2);
@@ -47,7 +47,7 @@ describe('Servicio de tareas', () => {
     });
   });
 
-  test('US3: edita campos y actualiza updatedAt', () => {
+  test('[FR-008] US3: edita campos y actualiza updatedAt', () => {
     let tick = 0;
     service.clock = () => new Date(Date.UTC(2026, 9, 21, 10, tick++));
     const t = service.create(base);
@@ -58,26 +58,26 @@ describe('Servicio de tareas', () => {
     assert.notEqual(updated.updatedAt, t.updatedAt);
   });
 
-  test('US3: rechaza edición inválida', () => {
+  test('[FR-008][FR-004] US3: rechaza edición inválida', () => {
     const t = service.create(base);
     assert.throws(() => service.update(t.id, { dueDate: 'mañana' }), ValidationError);
   });
 
-  test('US3: cambia estado respetando transiciones', () => {
+  test('[FR-007] US3: cambia estado respetando transiciones', () => {
     const t = service.create(base);
     assert.equal(service.changeStatus(t.id, 'completada').status, 'completada');
     assert.throws(() => service.changeStatus(t.id, 'pendiente'), TransitionError);
     assert.throws(() => service.changeStatus(t.id, 'archivada'), ValidationError);
   });
 
-  test('US4: elimina tarea y luego no existe', () => {
+  test('[FR-009][FR-011] US4: elimina tarea y luego no existe', () => {
     const t = service.create(base);
     service.remove(t.id);
     assert.throws(() => service.get(t.id), NotFoundError);
     assert.throws(() => service.remove(t.id), NotFoundError);
   });
 
-  test('los objetos devueltos no permiten mutar el repositorio', () => {
+  test('[Principio II] los objetos devueltos no permiten mutar el repositorio', () => {
     const t = service.create(base);
     t.title = 'hackeado';
     assert.equal(service.get(t.id).title, 'Tarea');
@@ -85,7 +85,7 @@ describe('Servicio de tareas', () => {
 });
 
 describe('Repositorio con persistencia JSON (FR-010)', () => {
-  test('persiste y recarga tareas desde disco', () => {
+  test('[FR-010] persiste y recarga tareas desde disco', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taskflow-'));
     const filePath = path.join(dir, 'sub', 'tasks.json');
     try {
@@ -100,7 +100,7 @@ describe('Repositorio con persistencia JSON (FR-010)', () => {
     }
   });
 
-  test('tolera un archivo vacío', () => {
+  test('[FR-010] tolera un archivo vacío', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taskflow-'));
     const filePath = path.join(dir, 'tasks.json');
     try {

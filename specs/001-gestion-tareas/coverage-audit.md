@@ -1,8 +1,8 @@
-# Documento de Auditoría – Convergencia y Cobertura (Iteración 1)
+# Documento de Auditoría – Validación, Cobertura y Convergencia (Iteración 1)
 
-> **Comando SDD:** `/speckit-converge` (auditoría de cobertura, *Speckit-coverage*)
-> **Rama:** `001-gestion-tareas` | **Fecha de auditoría:** 2026-10-21
-> **Auditado contra:** [`constitution.md`](../../.specify/memory/constitution.md), [`spec.md`](./spec.md), [`plan.md`](./plan.md) y [`tasks.md`](./tasks.md)
+> **Fase SDD:** 5 – Validar | **Comando Spec Kit:** `/speckit-converge` (auditoría de cobertura, *Speckit-coverage*)
+> **Rama:** `001-gestion-tareas` | **Fecha de auditoría:** 2026-10-22
+> **Auditado contra:** [`constitution.md`](../../.specify/memory/constitution.md) · [`spec.md`](./spec.md) · [`plan.md`](./plan.md) · [`tasks.md`](./tasks.md)
 
 ---
 
@@ -10,36 +10,36 @@
 
 # ✅ ESTADO: CONVERGED
 
-El código de la iteración 1 cumple la especificación, el plan técnico y los siete principios de la Constitución. No quedan hallazgos críticos ni mayores abiertos. Los dos hallazgos que encontró el bucle de verificación iterativa se corrigieron antes de este dictamen (ver §6).
+El resultado cumple **cada criterio de aceptación** de la especificación, el diseño técnico y los siete principios de la Constitución. No quedan hallazgos críticos ni mayores abiertos.
 
-| Dimensión auditada | Resultado |
+| Dimensión | Resultado |
 |---|---|
 | Cobertura de código (líneas / ramas / funciones) | **100 % / 100 % / 100 %** ✅ |
-| Pruebas automatizadas | **35 / 35 pasan** ✅ |
-| Requisitos funcionales con prueba trazable | **11 / 11** ✅ |
+| Pruebas automatizadas | **36 / 36 pasan** ✅ |
+| Requisitos funcionales con prueba trazable (ID en el nombre) | **12 / 12** ✅ |
 | Requisitos no funcionales verificados | **5 / 5** ✅ |
-| Escenarios de aceptación cubiertos | **15 / 15** ✅ |
-| Tareas completadas | **26 / 26** ✅ |
+| Criterios de aceptación (CA-01 a CA-15) verificados | **15 / 15** ✅ |
+| Tareas completadas con su "Hecho cuando…" | **26 / 26** ✅ |
 | Principios de la Constitución | **7 / 7** ✅ |
+| Puertas de revisión (G0 a G5) | **6 / 6** ✅ |
 
 ---
 
 ## 2. Cobertura de código
 
-Comando: `npm run coverage` (Node.js 22.23.2, `--experimental-test-coverage`; incluye `src/**` y excluye `src/server.js`, que es solo el arranque).
+`npm run coverage` (Node.js 22.23.2; incluye `src/**` y excluye `src/server.js`, que es solo el arranque):
 
 ```
-# tests 35 | suites 7 | pass 35 | fail 0
+# tests 36 | suites 8 | pass 36 | fail 0
 # --------------------------------------------------------------------
-# file                | line % | branch % | funcs % | uncovered lines
+# file                       | line % | branch % | funcs % | uncovered
 # --------------------------------------------------------------------
-#  domain/task.js           | 100.00 |   100.00 |  100.00 |
-#  http/app.js              | 100.00 |   100.00 |  100.00 |
-#  repository/taskRepository| 100.00 |   100.00 |  100.00 |
-#  services/taskService.js  | 100.00 |   100.00 |  100.00 |
+#  domain/task.js            | 100.00 |   100.00 |  100.00 |
+#  http/app.js               | 100.00 |   100.00 |  100.00 |
+#  repository/taskRepository | 100.00 |   100.00 |  100.00 |
+#  services/taskService.js   | 100.00 |   100.00 |  100.00 |
 # --------------------------------------------------------------------
-# all files                 | 100.00 |   100.00 |  100.00 |
-# --------------------------------------------------------------------
+# all files                  | 100.00 |   100.00 |  100.00 |
 ```
 
 | Métrica | Umbral (Constitución III) | Obtenido | Estado |
@@ -48,97 +48,129 @@ Comando: `npm run coverage` (Node.js 22.23.2, `--experimental-test-coverage`; in
 | Ramas | ≥ 85 % | 100 % | ✅ |
 | Funciones | ≥ 90 % | 100 % | ✅ |
 
-**Exclusión justificada:** `src/server.js` (16 líneas) solo lee variables de entorno y llama a `listen()`. Se verificó con la prueba manual (smoke test) documentada en `implement-report.md` §5.
+**Exclusión justificada:** `src/server.js` (16 líneas, solo `listen()`) se verificó con la validación manual (§5).
 
 ---
 
-## 3. Matriz de trazabilidad: requisitos → código → pruebas
+## 3. Trazabilidad requisito → diseño → tarea → código → prueba
 
-| Req. | Descripción breve | Implementación | Pruebas que lo verifican | Estado |
-|---|---|---|---|---|
-| FR-001 | Campos y longitudes de la tarea | `domain/task.js` `validateTaskInput` | domain: *exige title, subject y dueDate*, *rechaza title vacío o demasiado largo*, *rechaza description…*; api: *400 con detalles* | ✅ |
-| FR-002 | UUID, estado inicial y timestamps | `domain/task.js` `createTask` | domain: *asigna id, valores por defecto y timestamps* | ✅ |
-| FR-003 | Prioridad enum, por defecto `media` | `domain/task.js` | domain: *rechaza prioridad inválida*, *asigna … valores por defecto* | ✅ |
-| FR-004 | 400 con lista de errores | `ValidationError` → `http/app.js` | domain: *lanza ValidationError con detalles*; api: *400 con detalles*, *400 con JSON mal formado*, *POST sin cuerpo* | ✅ |
-| FR-005 | Orden por fecha y prioridad | `taskService.list` | service: *US2: lista ordenada por fecha de entrega y prioridad* | ✅ |
-| FR-006 | Filtros por estado, prioridad y materia | `taskService.list` | service: *US2: filtra…*, *US2: rechaza filtros inválidos*; api: *400 con filtro inválido* | ✅ |
-| FR-007 | Máquina de estados, 409 | `canTransition`, `changeStatus` | domain: *permite transiciones válidas*, *bloquea transiciones…*; service: *US3: cambia estado…*; api: *409 ante transición…* | ✅ |
-| FR-008 | Edición parcial | `taskService.update` | service: *US3: edita campos…*, *US3: rechaza edición inválida*; domain: *en modo parcial…*, *no permite fijar status* | ✅ |
-| FR-009 | Eliminar | `taskService.remove`, `DELETE` | service: *US4: elimina tarea…*; api: *flujo completo* | ✅ |
-| FR-010 | Persistencia entre reinicios | `TaskRepository.persist/load` | service: *persiste y recarga tareas desde disco*, *tolera un archivo vacío* | ✅ |
-| FR-011 | 404 para id inexistente | `NotFoundError` | service: *US4: elimina…* (get/remove); api: *flujo completo* (GET tras DELETE) | ✅ |
+| Req. | Diseño | Tareas | Código | Pruebas (nombre con el ID) | ✔ |
+|---|---|---|---|---|---|
+| FR-001 | Modelo §5 | T004, T005, T009, T011 | `validateTaskInput`, `isValidDate` | 7 pruebas `[FR-001]` | ✅ |
+| FR-002 | Modelo §5 | T005, T009 | `createTask` | `[FR-002][FR-003] asigna id…`, `[FR-001][FR-002] US1…` | ✅ |
+| FR-003 | Modelo §5 | T005 | `PRIORITIES` | `[FR-003] rechaza prioridad inválida`, `[FR-002][FR-003]…` | ✅ |
+| FR-004 | ADR-04 | T007, T010, T011 | `ValidationError` → 400 | 7 pruebas `[FR-004]` | ✅ |
+| FR-005 | ADR-07 | T013, T014 | `list()` + `PRIORITY_WEIGHT` | `[FR-005] US2: lista ordenada…` | ✅ |
+| FR-006 | §6 | T013–T015 | `list(filters)` | `[FR-006] US2: filtra…`, `[FR-006][FR-004]…`, `[FR-006] 400 con filtro inválido` | ✅ |
+| FR-007 | ADR-03 | T016, T018, T019 | `canTransition`, `changeStatus` | 4 pruebas `[FR-007]` | ✅ |
+| FR-008 | ADR-03 | T016, T017 | `update()` | 4 pruebas `[FR-008]` | ✅ |
+| FR-009 | §6 | T020, T021 | `remove()` | `[FR-009][FR-011] US4…` + flujo `[US1-US4]` | ✅ |
+| FR-010 | ADR-02 | T022 | `persist()` / `load()` | `[FR-010] persiste y recarga…`, `[FR-010] tolera un archivo vacío` | ✅ |
+| FR-011 | ADR-04 | T014, T020 | `NotFoundError` → 404 | `[FR-009][FR-011]…` + flujo `[US1-US4]` | ✅ |
+| FR-012 | §6 | T007, T023 | enrutador → 404/405 | `[FR-012] 404 en rutas desconocidas y 405…` | ✅ |
+| NFR-001 | §6 | T007 | `send()` UTF-8 | `[NFR-001][NFR-004] GET /health…` | ✅ |
+| NFR-002 | ADR-07 | T024 | filtro/orden en memoria | `[NFR-002] lista 1 000 tareas…` → p95 < 200 ms ✅ | ✅ |
+| NFR-003 | §8 | T025 | — | `npm run coverage` → 100 % | ✅ |
+| NFR-004 | ADR-06 | T007, T023 | `readJson`, `errorResponse` | `[NFR-004] 413…`, `[NFR-004] 500…`, `[NFR-001][NFR-004]…` | ✅ |
+| NFR-005 | ADR-01 | T002 | `package.json` sin `dependencies` | inspección | ✅ |
 
-### Requisitos no funcionales
+### Criterios de aceptación
 
-| Req. | Verificación | Evidencia | Estado |
-|---|---|---|---|
-| NFR-001 JSON UTF-8 | Cabecera `application/json; charset=utf-8` en `send()` | api: todas las respuestas se parsean como JSON | ✅ |
-| NFR-002 < 200 ms con 1 000 tareas | Prueba de carga: 1 000 tareas, 50 peticiones `GET /tasks?subject=redes` | **p50 = 15,1 ms · p95 = 17,9 ms · máx = 51,0 ms** | ✅ |
-| NFR-003 Cobertura | `npm run coverage` | §2 (100 %) | ✅ |
-| NFR-004 Seguridad | 413, 500 genérico, `nosniff` | api: *413 si el cuerpo excede el límite*, *500 genérico sin filtrar detalles internos*, *GET /health* (nosniff) | ✅ |
-| NFR-005 Sin dependencias | `package.json` sin `dependencies` | inspección | ✅ |
-
-### Escenarios de aceptación (spec §2)
-
-| Historia | Escenarios | Cubiertos |
+| CA | Prueba que lo verifica | ✔ |
 |---|---|---|
-| US1 Registrar | 4 | 4 ✅ |
-| US2 Consultar | 5 | 5 ✅ |
-| US3 Editar/Estado | 4 | 4 ✅ |
-| US4 Eliminar | 2 | 2 ✅ |
-| **Total** | **15** | **15** |
+| CA-01 | `[FR-001][FR-002] US1: crea y recupera una tarea` · `[US1-US4] flujo completo` (201) | ✅ |
+| CA-02 | `[FR-002][FR-003] asigna id, valores por defecto y timestamps` | ✅ |
+| CA-03 | `[FR-001] exige title…` · `[FR-001] rechaza fechas inexistentes…` · `[FR-004] 400 con detalles…` | ✅ |
+| CA-04 | `[FR-004] 400 con JSON mal formado` | ✅ |
+| CA-05, CA-06 | `[FR-005] US2: lista ordenada por fecha de entrega y prioridad` | ✅ |
+| CA-07 | `[FR-006] US2: filtra por estado, prioridad y materia…` | ✅ |
+| CA-08 | `[FR-006] 400 con filtro inválido` | ✅ |
+| CA-09 | `[FR-008] US3: edita campos y actualiza updatedAt` | ✅ |
+| CA-10, CA-11 | `[FR-007] US3: cambia estado respetando transiciones` · `[FR-007] 409…` | ✅ |
+| CA-12 | `[FR-008] no permite fijar status al crear/editar` | ✅ |
+| CA-13 | `[US1-US4] flujo completo` (204) · `[FR-009][FR-011] US4…` | ✅ |
+| CA-14 | `[FR-009][FR-011] US4: elimina tarea y luego no existe` | ✅ |
+| CA-15 | `[FR-010] persiste y recarga tareas desde disco` + validación manual | ✅ |
 
 ---
 
 ## 4. Auditoría contra la Constitución
 
-| Principio | Verificación realizada | Resultado |
+| Principio | Verificación | Resultado |
 |---|---|---|
-| **I. Especificación antes que código** | Existen `spec.md`, `plan.md` y `tasks.md` previos al código; los módulos de `src/` referencian `spec.md`, `plan.md` o `constitution.md` en sus comentarios | ✅ Cumple |
-| **II. Arquitectura por capas** | `domain/task.js` solo importa `node:crypto`; `services` importa `domain`; `http` importa `services` y `domain` (solo tipos de error). No hay dependencias inversas | ✅ Cumple |
-| **III. Pruebas y cobertura** | 35 pruebas en tres niveles; cobertura del 100 % (> umbrales) | ✅ Cumple |
-| **IV. Mínimas dependencias** | 0 dependencias, solo módulos `node:*` | ✅ Cumple |
-| **V. Seguridad por diseño** | Validación en el dominio; límite de 10 KB; 500 sin detalles; `nosniff`; configuración por variables de entorno; sin secretos | ✅ Cumple |
-| **VI. Contratos y errores consistentes** | Los 7 endpoints coinciden con la tabla de `plan.md` §6; formato `{error, details?}` uniforme | ✅ Cumple |
-| **VII. Documentación viva** | Seis artefactos versionados junto al código; `tasks.md` marcado con `[X]` | ✅ Cumple |
-
-## 5. Conformidad con el plan técnico
-
-| Elemento del plan | ¿Implementado según el plan? |
-|---|---|
-| Estructura de carpetas (§4) | ✅ Idéntica |
-| Modelo de datos (§5) | ✅ Mismos 9 atributos |
-| Máquina de estados (§5) | ✅ `TRANSITIONS` coincide con el diagrama |
-| Contrato de API (§6) | ✅ 7/7 rutas y códigos |
-| Decisiones (§7): `node:http`, JSON atómico, `node:test`, endpoint de estado separado, copias defensivas | ✅ 5/5 |
+| I. La spec es la fuente de verdad | El *spec drift* detectado (404/405) se resolvió **editando la spec** (FR-012) | ✅ |
+| II. Arquitectura por capas | `domain` solo importa `node:crypto`; no hay dependencias inversas; errores tipados | ✅ |
+| III. Requisitos verificables | 36/36 pruebas llevan el ID en el nombre; cobertura del 100 % | ✅ |
+| IV. Incrementos pequeños | 26 tareas atómicas con "Hecho cuando…" *(ver la observación AUD-05)* | ✅ con observación |
+| V. Seguridad | Validación, 10 KB → 413, 500 genérico, `nosniff`, configuración por variables de entorno | ✅ |
+| VI. Contratos | 7/7 rutas coinciden con `plan.md` §6; formato de error uniforme | ✅ |
+| VII. Todo versionado | Specs y código en el mismo repositorio y en el mismo commit | ✅ |
 
 ---
 
-## 6. Hallazgos
+## 5. Validación más allá de las pruebas
+
+La guía advierte sobre la **falsa sensación de verificación** ("pasan los tests, así que funciona"). Por eso también se validó a mano:
+
+| Validación | Resultado |
+|---|---|
+| Arranque real (`npm start`) | ✅ "TaskFlow API escuchando…" |
+| Flujo real con `curl`: registrar una tarea | ✅ 201 con UUID, `pendiente` |
+| Persistencia real en `data/tasks.json` | ✅ La tarea está en el archivo |
+| Medición de rendimiento con 1 000 tareas (50 peticiones) | ✅ p50 = 15,1 ms · p95 = 17,9 ms · máx = 51,0 ms |
+
+---
+
+## 6. Revisión de antipatrones (guía SDD §12)
+
+| Antipatrón | ¿Presente? | Evidencia |
+|---|---|---|
+| Deriva de la spec (*spec drift*) | ⚠️ Se detectó y se **corrigió** | Faltaba FR-012 en la spec; se agregó |
+| Sobre-especificación | ❌ No | Las specs son proporcionales a 4 historias |
+| Spec que es código disfrazado | ❌ No | `spec.md` no menciona tecnología; el *cómo* está en `plan.md` |
+| Aprobar sin leer | ❌ No | Cada puerta tiene su checklist completada |
+| Falsa sensación de verificación | ❌ No | Validación manual en §5 |
+| Waterfall encubierto | ❌ No | Solo se especificó la funcionalidad 001; los usuarios van en la iteración 2 |
+| Specs huérfanas | ❌ No | Una sola carpeta de spec, vigente |
+
+---
+
+## 7. Hallazgos
 
 | ID | Severidad | Descripción | Estado |
 |---|---|---|---|
-| AUD-01 | 🔴 Mayor | Cuerpos > 10 KB cortaban la conexión en lugar de responder 413 (violaba los Principios V y VI). | ✅ **Corregido** en la iteración (ver `implement-report.md` §4) |
-| AUD-02 | 🟡 Menor | Rama muerta en `taskService.update` (cobertura de ramas de 97,37 %). | ✅ **Corregido** |
-| AUD-03 | 🟢 Observación | La escritura en archivo JSON no soporta varios procesos a la vez. Es aceptable para el alcance de un usuario (riesgo documentado en `plan.md` §9). | Aceptado – iteración 2 |
-| AUD-04 | 🟢 Observación | La cobertura de Node es *experimental*. Se recomienda fijar la versión de Node en CI. | Aceptado |
+| AUD-01 | 🔴 Mayor | Cuerpos > 10 KB cortaban la conexión en lugar de responder 413. | ✅ Corregido (ADR-06) |
+| AUD-02 | 🟡 Menor | Rama muerta en `update()` (cobertura de ramas de 97,37 %). | ✅ Corregido |
+| AUD-03 | 🟡 Menor | *Spec drift*: 404/405 implementados sin requisito. | ✅ Corregido (FR-012) |
+| AUD-04 | 🟡 Menor | NFR-002 solo se verificaba a mano. | ✅ Corregido (prueba `[NFR-002]`, T024) |
+| AUD-05 | 🟢 Observación | El código se subió en un solo commit, no en uno por tarea. | Aceptado; se exige en la iteración 2 |
+| AUD-06 | 🟢 Observación | El JSON no soporta varios procesos escribiendo a la vez (riesgo de `plan.md` §9). | Aceptado; BD en la iteración 2 |
 
 **Hallazgos críticos o mayores abiertos: 0**
 
-## 7. Historial del ciclo de convergencia
+## 8. Historial del ciclo de convergencia
 
 | Ciclo | Resultado | Motivo |
 |---|---|---|
-| 1 | ❌ Fallo de convergencia | 1 prueba fallaba (413) y la cobertura de ramas era < 100 % |
-| 2 | ✅ **CONVERGED** | 35/35 pruebas pasan, 100 % de cobertura y 0 hallazgos abiertos de severidad mayor |
-
-## 8. Recomendaciones para la iteración 2
-
-1. Agregar usuarios y autenticación (nueva especificación `002-usuarios`).
-2. Migrar a SQLite o PostgreSQL y actualizar `plan.md` (en *Complexity Tracking* se justificaría la dependencia).
-3. Integrar `npm run coverage` en un pipeline de CI (GitHub Actions) que falle si la cobertura baja del umbral.
-4. Agregar pruebas de carga automatizadas para NFR-002.
+| 1 | ❌ No converge | Prueba 413 en rojo; cobertura de ramas < 100 % |
+| 2 | ✅ Converge (contra Spec Kit) | 35/35 pruebas, 100 % de cobertura |
+| 3 | ❌ No converge (contra la guía SDD) | *Spec drift* (FR-012), NFR-002 no automatizado y pruebas sin ID |
+| 4 | ✅ **CONVERGED** | 36/36 pruebas con ID, 100 % de cobertura, spec actualizada y puertas completas |
 
 ---
 
-**Firma de auditoría:** agente de IA (Spec Kit `/speckit-converge`), revisado por el equipo de desarrollo, 2026-10-21.
+## ✅ Puerta G5 — Checklist antes de cerrar la funcionalidad
+
+- [X] Todos los criterios de aceptación se verificaron (§3: 15/15).
+- [X] La spec refleja el comportamiento final (FR-012 agregado y ADR-06 documentado).
+- [X] Las pruebas tienen nombres trazados a requisitos (36/36).
+- [X] La spec y el código se revisaron en el mismo commit.
+
+**Aprobado por:** Product Owner + QA, 2026-10-22.
+
+## 9. Recomendaciones para la iteración 2
+
+1. Nueva spec `002-usuarios` (autenticación y multiusuario).
+2. Migrar a SQLite o PostgreSQL, justificándolo en *Complexity Tracking*.
+3. Un commit por tarea, con su ID.
+4. Pipeline de CI (GitHub Actions) que ejecute `npm run coverage` y falle si baja del umbral.

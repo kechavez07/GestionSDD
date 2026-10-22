@@ -12,17 +12,17 @@ API REST de **gestión de tareas académicas**, desarrollada con **Spec-Driven D
 
 ## 📦 Entregables SDD
 
-Cada fase tiene su documento en Markdown (dentro del repositorio, junto al código) y su versión en Word, que está en [`entregables/`](./entregables).
+Cada fase tiene su documento en Markdown (dentro del repositorio, junto al código) y una copia en [`entregables/`](./entregables), junto con el documento completo.
 
-| # | Fase SDD | Comando Spec Kit | Documento (Markdown) | Word | Puerta de revisión |
+| # | Fase SDD | Comando Spec Kit | Documento (Markdown) | Entregable | Puerta de revisión |
 |---|---|---|---|---|---|
-| 1 | **Constitución** – principios globales | `/speckit-constitution` | [`constitution.md`](./.specify/memory/constitution.md) | [01_Constitucion](./entregables/01_Constitucion_speckit-constitution.docx) | G0 – Equipo ✅ |
-| 2 | **Especificación** – qué y por qué | `/speckit-specify` | [`spec.md`](./specs/001-gestion-tareas/spec.md) | [02_Especificacion](./entregables/02_Especificacion_speckit-specify.docx) | G1 – Product Owner ✅ |
-| 3 | **Planificación** – cómo (diseño) | `/speckit-plan` | [`plan.md`](./specs/001-gestion-tareas/plan.md) | [03_Planificacion](./entregables/03_Planificacion_speckit-plan.docx) | G2 – Líder técnico ✅ |
-| 4 | **Tareas** – pasos pequeños | `/speckit-tasks` | [`tasks.md`](./specs/001-gestion-tareas/tasks.md) | [04_Tareas](./entregables/04_Tareas_speckit-tasks.docx) | G3 – Líder técnico ✅ |
-| 5 | **Implementación** de la iteración | `/speckit-implement` | [`implement-report.md`](./specs/001-gestion-tareas/implement-report.md) + [`src/`](./src) + [`tests/`](./tests) | [05_Implementacion](./entregables/05_Implementacion_speckit-implement.docx) | G4 – Revisor ✅ |
-| 6 | **Auditoría** – validación y cobertura | `/speckit-converge` (*coverage*) | [`coverage-audit.md`](./specs/001-gestion-tareas/coverage-audit.md) | [06_Auditoria](./entregables/06_Auditoria_speckit-coverage.docx) | G5 – PO + QA ✅ |
-| ★ | **Documento completo** (las 6 fases con portada) | — | — | [00_Documentacion_SDD_Completa](./entregables/00_Documentacion_SDD_Completa.docx) | — |
+| 1 | **Constitución** – principios globales | `/speckit-constitution` | [`constitution.md`](./.specify/memory/constitution.md) | [01_Constitucion](./entregables/01_Constitucion_speckit-constitution.md) | G0 – Equipo ✅ |
+| 2 | **Especificación** – qué y por qué | `/speckit-specify` | [`spec.md`](./specs/001-gestion-tareas/spec.md) | [02_Especificacion](./entregables/02_Especificacion_speckit-specify.md) | G1 – Product Owner ✅ |
+| 3 | **Planificación** – cómo (diseño) | `/speckit-plan` | [`plan.md`](./specs/001-gestion-tareas/plan.md) | [03_Planificacion](./entregables/03_Planificacion_speckit-plan.md) | G2 – Líder técnico ✅ |
+| 4 | **Tareas** – pasos pequeños | `/speckit-tasks` | [`tasks.md`](./specs/001-gestion-tareas/tasks.md) | [04_Tareas](./entregables/04_Tareas_speckit-tasks.md) | G3 – Líder técnico ✅ |
+| 5 | **Implementación** de la iteración | `/speckit-implement` | [`implement-report.md`](./specs/001-gestion-tareas/implement-report.md) + [`src/`](./src) + [`tests/`](./tests) | [05_Implementacion](./entregables/05_Implementacion_speckit-implement.md) | G4 – Revisor ✅ |
+| 6 | **Auditoría** – validación y cobertura | `/speckit-converge` (*coverage*) | [`coverage-audit.md`](./specs/001-gestion-tareas/coverage-audit.md) | [06_Auditoria](./entregables/06_Auditoria_speckit-coverage.md) | G5 – PO + QA ✅ |
+| ★ | **Documento completo** (las 6 fases con portada) | — | — | [00_Documentacion_SDD_Completa](./entregables/00_Documentacion_SDD_Completa.md) | — |
 
 Instrucciones para el agente de IA: [`AGENTS.md`](./AGENTS.md) · [`CLAUDE.md`](./CLAUDE.md)
 
@@ -98,7 +98,7 @@ Describe el **cómo**:
 │   ├── tasks.md                      ← 4. Tareas
 │   ├── implement-report.md           ← 5. Implementación
 │   └── coverage-audit.md             ← 6. Auditoría
-├── entregables/                      ← los 6 documentos en Word + el documento completo
+├── entregables/                      ← los 6 documentos (.md) + el documento completo + README de entregables
 ├── src/
 │   ├── domain/task.js                ← entidad, validación y estados
 │   ├── repository/taskRepository.js  ← persistencia JSON atómica

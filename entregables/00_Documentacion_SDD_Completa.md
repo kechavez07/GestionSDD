@@ -1,13 +1,15 @@
-# TaskFlow – API de Gestión de Tareas Académicas
+# Plataforma Universitaria con Microfrontends y SSO Biométrico Facial
 
-**Documentación completa de la iteración 1 (6 fases SDD)**
+**Documentación SDD completa – Iteración 1 (`001-nucleo-sesion-segura`)**
 
-*Spec-Driven Development (SDD) con GitHub Spec Kit · Nivel spec-anchored*
-Iteración 1 · Rama 001-gestion-tareas · 22 de octubre de 2026
+*Spec-Driven Development con GitHub Spec Kit · Nivel spec-anchored · 22 de octubre de 2026*
 
-- **Estudiante:** kleber enrique chavez oscullo 
-- **Asignatura:** Gestión de Proyectos de Software
-- **Repositorio:** https://github.com/kechavez07/GestionSDD
+| | |
+|---|---|
+| **Estudiante** | Kleber Enrique Chávez Oscullo |
+| **Asignatura** | Gestión de Proyectos de Software |
+| **Docente** | ____________________________ |
+| **Repositorio** | https://github.com/kechavez07/GestionSDD |
 
 ## Índice
 
@@ -18,880 +20,1162 @@ Iteración 1 · Rama 001-gestion-tareas · 22 de octubre de 2026
 5. Implementación (`/speckit-implement`)
 6. Auditoría (`/speckit-converge` · coverage)
 
+
 ---
 
-# Constitución del Proyecto TaskFlow
+# Constitución del Proyecto: Plataforma Universitaria con Microfrontends y SSO Biométrico Facial
 
 > **Fase SDD:** 0 – Principios del proyecto | **Comando Spec Kit:** `/speckit-constitution`
 > **Artefacto:** `.specify/memory/constitution.md`
-> **Versión:** 1.1.0 | **Ratificada:** 2026-10-21 | **Última enmienda:** 2026-10-22
+> **Autor:** Kleber Enrique Chávez Oscullo | **Versión:** 1.0.0 | **Ratificada:** 2026-10-22
+> **Fuente:** documento de arquitectura de la tesis (decisiones base D1–D12) y análisis técnico de Proyecto_LoginSWS (hallazgos #1–#16).
 
 ## Propósito
 
-TaskFlow es una API REST para que estudiantes universitarios registren y den seguimiento a sus tareas académicas. Esta constitución reúne las reglas **globales y no negociables** que aplican a todo el proyecto, sin importar la funcionalidad. La IA y el equipo deben respetarlas en cada fase: especificar, diseñar, generar tareas, implementar y validar.
+La plataforma es una aplicación web universitaria formada por un **shell** y cuatro **microfrontends** (SSO, administración, académico y biblioteca). Ofrece **autenticación única de dos factores**: contraseña más rostro, o TOTP como alternativa. El acceso a cada módulo depende del rol del usuario.
 
-> *Idea central de SDD:* decidir qué código debe existir es el trabajo real; escribirlo es cada vez más automatizable. Por eso las decisiones se toman **por escrito y antes** de que el agente toque un archivo.
+Esta constitución reúne las reglas **globales y no negociables** que aplican a todas las funcionalidades e iteraciones. Ninguna especificación, plan, tarea o línea de código puede contradecirla.
 
-**Nivel de rigor adoptado:** **Spec-anchored** (anclado a la especificación). La especificación se mantiene viva durante toda la vida de la funcionalidad: cuando cambia el comportamiento, **primero se edita la spec y después el código**.
+**Nivel de rigor SDD:** *spec-anchored*. La spec se mantiene viva: si cambia el comportamiento, primero se edita la spec y luego el código.
 
 ---
 
-## 1. Stack
+## 1. Stack y nomenclatura obligatoria
 
-| Componente                  | Decisión                                          |
-| --------------------------- | -------------------------------------------------- |
-| Lenguaje                    | JavaScript (CommonJS)                              |
-| Entorno                     | Node.js ≥ 20 LTS (probado en 22.23)               |
-| Servidor HTTP               | `node:http` nativo                               |
-| Pruebas                     | `node:test` + `node:assert` + `fetch` nativo |
-| Persistencia (iteración 1) | Archivo JSON local con escritura atómica          |
-| Dependencias de ejecución  | **Ninguna**                                  |
+| Componente | Rol | Tecnología |
+|---|---|---|
+| `shell` | Host de composición, sesión de UI, router de nivel superior | React + Vite *(propuesta, se valida en el spike S2)* |
+| `mf-sso` | Login, enrolamiento y captura facial | React + MediaPipe Tasks Vision (WASM local, versión fijada, SRI) |
+| `mf-admin` | Administración | Next.js (Multi-Zones bajo `/admin`) |
+| `mf-academico` | Gestión académica | React |
+| `mf-biblioteca` | Biblioteca y reservas | Angular + apollo-angular |
+| `edge-proxy` | TLS, HSTS, cabeceras de seguridad, enrutamiento, rate limiting | Caddy / Nginx |
+| `bff` | Sesión, CSRF, tokens internos, JWKS, gateway GraphQL, endpoint biométrico | NestJS + Hive Gateway |
+| `auth-svc` | Identidad, Argon2id, TOTP, roles, bloqueos, consentimiento | FastAPI |
+| `bio-svc` | Liveness, PAD, embeddings y plantillas cifradas | FastAPI + DeepFace (ArcFace) + Silent-Face |
+| `admin-svc` / `academico-svc` / `biblioteca-svc` | Subgrafos de dominio | NestJS / Spring Boot / Laravel (Lighthouse) |
+| `session-store` | Sesiones y retos efímeros | Redis |
+| `*-db` | Un almacén por servicio | PostgreSQL |
+| Despliegue | Topología completa | Docker Compose v2 con redes internas |
+
+Cambiar una tecnología de esta tabla requiere una **enmienda** (§9) y un ADR en el `plan.md` de la funcionalidad afectada.
+
+---
 
 ## 2. Principios fundamentales
 
 ### I. La especificación es la fuente de verdad (NO NEGOCIABLE)
-
-- No se escribe código de producción sin `spec.md`, `plan.md` y `tasks.md` aprobados en sus puertas de revisión.
-- Si el código y la spec no coinciden, uno de los dos está mal y se resuelve de forma explícita, sin ignorar la diferencia.
+- No se escribe código sin `spec.md`, `plan.md` y `tasks.md` aprobados en sus puertas de revisión.
+- Cada requisito se traza a una decisión base (D1–D12) o a un hallazgo de LoginSWS (#1–#16) cuando corresponda.
 - Si una tarea es ambigua o contradice la spec, el agente **se detiene y pregunta**.
 
-### II. Arquitectura limpia por capas
+### II. Ningún token en el navegador (D1, D3) (NO NEGOCIABLE)
+- El navegador solo transporta la cookie opaca `__Host-sid`, o `__Host-presid` durante el login, con `HttpOnly`, `Secure`, `SameSite=Strict` y `Path=/`.
+- Ningún JWT ni token de acceso llega a JavaScript, a `localStorage` ni a `sessionStorage` (corrige el hallazgo #12).
+- Los MFE llaman al backend solo a través del contrato del shell: `authFetch` o un cliente GraphQL con `credentials: 'include'` y la cabecera `X-CSRF-Token`.
 
-- Dependencias en un solo sentido: `http → services → domain` y `services → repository`.
-- El **dominio** no depende de la infraestructura (ni HTTP ni sistema de archivos).
-- Los errores de dominio son **tipos** (`ValidationError`, `NotFoundError`, `TransitionError`), no strings.
-- Cada módulo tiene una sola responsabilidad. El repositorio devuelve copias, nunca referencias internas.
+### III. Mismo origen por rutas (D2)
+- Un solo dominio y un solo certificado TLS: `/`, `/sso`, `/admin`, `/academico`, `/biblioteca`, `/bff/*` y `/graphql`.
+- **Prohibido** CORS con credenciales.
 
-### III. Requisitos verificables y pruebas trazables (NO NEGOCIABLE)
+### IV. Zero Trust reducido y declarado (D5, D6)
+- El `bff` **no reenvía** la identidad del usuario tal cual. Por cada llamada emite un JWT **ES256**, `typ=at+jwt`, con vida **≤ 5 min** y un `aud` **único** del servicio destino.
+- Cada backend valida `alg` (lista blanca), `iss`, `aud`, `typ` y `exp` contra el JWKS interno del `bff`, y autoriza por rol con **fallo cerrado**.
+- Solo `edge-proxy` publica puertos (443, y 80 que redirige a 443). Los backends, las bases de datos y `bio-svc` no publican puertos.
+- Se declara el alcance según NIST SP 800-207A: REC-4/REC-5 cubiertos, REC-2/REC-3 parciales y REC-1 (mTLS) **no cubierto**, que queda como trabajo futuro.
 
-- Cada requisito tiene un ID (`FR-xxx`, `NFR-xxx`) y al menos una prueba automatizada.
-- **El nombre de cada prueba lleva el ID del requisito** que verifica, por ejemplo `[FR-007] 409 ante transición…`.
-- Ciclo Rojo → Verde → Refactor.
-- Cobertura mínima sobre `src/` (sin contar `server.js`): **líneas ≥ 90 %, ramas ≥ 85 %, funciones ≥ 90 %**.
+### V. El segundo factor se decide en el servidor (D9, D11) (NO NEGOCIABLE)
+- La cookie de sesión se emite **solo después de los dos factores**: contraseña y rostro, o contraseña y TOTP (corrige el hallazgo #1).
+- El cliente (MediaPipe) solo guía al usuario; **nunca decide**. La prueba de vida usa un nonce de un solo uso generado y consumido en el servidor (corrige el hallazgo #4).
+- Límites de intentos: **5 fallos faciales consecutivos → espera de 30 s**; **50 fallos acumulados → biometría deshabilitada**, acceso solo por TOTP y reenrolamiento.
 
-### IV. Incrementos pequeños
+### VI. Protección de datos biométricos – LOPDP Ecuador (D8, D10)
+- **Nunca se guardan imágenes faciales**, ni en disco ni en logs (corrige el hallazgo #2). Solo se guardan embeddings cifrados con **AES-256-GCM**.
+- El consentimiento es **explícito, versionado y revocable**, y siempre existe una alternativa no biométrica (TOTP).
+- La imagen facial **no viaja por GraphQL**. Usa un endpoint binario dedicado `/bff/auth/face/*`.
+- `bio-svc` está aislado en su propio segmento de red y su propia base de datos, y **solo `auth-svc`** puede llamarlo.
 
-- Se implementa **una tarea a la vez**. Cada tarea debe poder revisarse en minutos.
-- Cada tarea tiene su criterio "**Hecho cuando…**".
+### VII. Base de datos por servicio y auditoría limpia (D12)
+- Cada servicio es dueño exclusivo de su almacén, con credenciales distintas. Entre bases solo hay **referencias lógicas**.
+- Toda acción relevante se audita con `correlation_id` (`X-Request-Id`). **Nunca** se registran contraseñas, tokens, secretos TOTP ni datos biométricos.
 
-### V. Seguridad por diseño
+### VIII. Errores genéricos y sin enumeración
+- Las respuestas de autenticación son uniformes en mensaje y en tiempo, para que no revelen si existe una cuenta (corrige el hallazgo #13).
+- Las respuestas de error no incluyen trazas, `str(e)` ni rutas internas. El detalle queda solo en la auditoría (corrige el hallazgo #14).
 
-- Validación estricta de entradas (tipos, longitudes y enumerados).
-- Límite de 10 KB para el cuerpo de las peticiones.
-- Las respuestas 5xx **no exponen** detalles internos.
-- Cabeceras `Content-Type` explícita y `X-Content-Type-Options: nosniff`.
-- Ningún secreto en el código. La configuración va en variables de entorno (`PORT`, `DATA_FILE`).
+### IX. Secretos y cadena de suministro
+- Las claves (ES256, AES, contraseñas de bases de datos, SMTP) viven en **Docker secrets**. Si falta un secreto, el servicio **no arranca** (corrige el hallazgo #5).
+- Dependencias con versión fijada y activos con **SRI**. **Prohibido** `@latest` y los CDN sin integridad. Swagger e introspección GraphQL quedan **deshabilitados en producción** (corrige el hallazgo #16).
 
-### VI. Contratos explícitos y errores consistentes
+### X. Requisitos verificables y pruebas trazables
+- Cada requisito tiene un ID (`FR-xxx`, `NFR-xxx`) y al menos una prueba planificada. **El nombre de cada prueba lleva el ID del requisito.**
+- Cada servicio tiene pruebas unitarias, de integración y de seguridad (casos negativos: token con `aud` incorrecto, CSRF ausente, sesión pendiente usada como activa, etc.).
+- Cobertura mínima por servicio: **líneas ≥ 85 %, ramas ≥ 80 %**. En los módulos de seguridad (sesión, CSRF, emisión y validación de tokens, contraseña, TOTP): **ramas ≥ 90 %**.
 
-- Siempre se responde JSON, con códigos HTTP semánticos (200, 201, 204, 400, 404, 405, 409, 413, 500).
-- Los errores tienen la forma `{ "error": string, "details"?: string[] }`.
-
-### VII. Todo versionado y especificación viva
-
-- Las specs viven en el repositorio junto al código y se revisan **en el mismo commit o PR** que el código.
-- Si durante la implementación se descubre algo nuevo, **se actualiza la spec**, no solo el código.
-
-## 3. Prohibido
-
-- ❌ Agregar dependencias sin justificarlas en `plan.md` (sección *Complexity Tracking*).
-- ❌ Escribir código que no se pueda trazar a una tarea de `tasks.md`.
-- ❌ Hacer cambios grandes de golpe: un commit equivale a una tarea o a un grupo pequeño de tareas.
-- ❌ Aprobar una fase **sin leerla**, porque eso es *vibe coding* con más pasos.
-- ❌ Especificar todo el producto de una vez (*waterfall* encubierto). Se especifica por funcionalidad.
-- ❌ Exponer trazas de error o rutas internas al cliente.
-
-## 4. Puertas de revisión humanas
-
-La IA propone y el humano decide. Ninguna fase avanza sin la aprobación que se indica:
-
-| Puerta | Artefacto                | Aprueba            | Criterio                                         |
-| ------ | ------------------------ | ------------------ | ------------------------------------------------ |
-| G0     | `constitution.md`      | Equipo             | Consenso                                         |
-| G1     | `spec.md` (requisitos) | Product Owner      | Checklist de §15 de la guía (requisitos)       |
-| G2     | `plan.md` (diseño)    | Líder técnico    | Checklist de diseño                             |
-| G3     | `tasks.md`             | Líder técnico    | Checklist de tareas                              |
-| G4     | Implementación          | Revisor de código | Pruebas en verde y revisión del diff            |
-| G5     | Auditoría / validación | Product Owner + QA | Checklist de cierre y estado **CONVERGED** |
-
-## 5. Instrucciones para el agente de IA
-
-Están en `AGENTS.md` y `CLAUDE.md`. En resumen: leer la constitución y la spec de la funcionalidad, implementar **solo** la tarea indicada, ejecutar las pruebas, marcar la tarea y detenerse si algo contradice la spec.
-
-## 6. Definición de "Terminado" (Definition of Done)
-
-1. Todas las tareas de `tasks.md` están marcadas `[X]` y cumplen su "Hecho cuando…".
-2. `npm test` pasa al 100 %.
-3. `npm run coverage` cumple los umbrales del Principio III.
-4. Cada requisito (FR/NFR) tiene al menos una prueba que lleva su ID en el nombre.
-5. La spec refleja el comportamiento final (no hay *spec drift*).
-6. La auditoría indica estado **CONVERGED**, sin hallazgos críticos ni mayores abiertos.
-
-## 7. Gobernanza
-
-- La constitución está **por encima** de cualquier otra práctica del proyecto.
-- **Enmiendas:** se proponen por escrito, se aprueban en G0 y se versionan con SemVer (MAYOR: elimina o redefine un principio; MENOR: agrega uno; PARCHE: aclaraciones).
-- **Historial:**
-  - 1.0.0 (2026-10-21): versión inicial.
-  - 1.1.0 (2026-10-22): se agregan el nivel de rigor, el stack, la lista de prohibiciones, las puertas de revisión y la trazabilidad en los nombres de las pruebas.
+### XI. Incrementos pequeños, una funcionalidad a la vez
+- Se especifica **por funcionalidad**, no todo el producto de golpe.
+- Se implementa **una tarea a la vez**, con un commit por tarea que cite su ID.
 
 ---
 
-# Especificación (Requisitos): Gestión de Tareas Académicas
+## 3. Prohibido
+
+- ❌ Emitir cualquier credencial con acceso a datos antes de completar el segundo factor.
+- ❌ Guardar tokens en el navegador, o enviar JWT de usuario a un MFE.
+- ❌ Persistir imágenes faciales o registrarlas en logs.
+- ❌ Usar `@authenticated` o `@requiresScopes` del router GraphQL como **único** control de seguridad (D7). La seguridad no depende del router.
+- ❌ Publicar puertos de backends o bases de datos.
+- ❌ Que un MFE llame directamente a un backend sin pasar por el `bff`.
+- ❌ Agregar dependencias sin justificarlas en el `plan.md` (*Complexity Tracking*).
+- ❌ Aprobar una fase sin leerla.
+
+## 4. Spikes y decisiones condicionadas
+
+| Spike | Pregunta | Afecta | Regla |
+|---|---|---|---|
+| **S1** | ¿Federación GraphQL completa (Hive Gateway) o BFF sin supergrafo (plan B)? | D7 | Mientras no haya un go, se usa el **plan B**: el BFF enruta a un endpoint GraphQL por módulo. |
+| **S2** | ¿Mecanismo de carga de remotos (Module Federation, Native Federation, single-spa)? ¿Compatibilidad de Next.js y Angular? | Shell, MFE | El contrato `authFetch` y `BroadcastChannel` es independiente del mecanismo. |
+| **S3** | ¿Umbral τ de ArcFace y resultados de PAD aceptables? | D9 | Si es no-go, **plan B**: AWS Face Liveness solo para detección de vida, con consentimiento específico por transferencia internacional. |
+
+Cada spike termina con un registro **go/no-go** que se adjunta al `plan.md` de la funcionalidad correspondiente.
+
+## 5. Puertas de revisión humanas
+
+| Puerta | Artefacto | Aprueba | Criterio |
+|---|---|---|---|
+| G0 | `constitution.md` | Autor de la tesis + tutor | Consenso |
+| G1 | `spec.md` | Tutor (rol de Product Owner) | Checklist de requisitos |
+| G2 | `plan.md` | Tutor (rol de líder técnico) | Checklist de diseño, coherente con D1–D12 |
+| G3 | `tasks.md` | Autor de la tesis | Checklist de tareas |
+| G4 | Implementación | Revisor de código | Pruebas en verde y diff revisado |
+| G5 | Auditoría | Tutor | Checklist de cierre y estado CONVERGED |
+
+## 6. Definición de "Terminado"
+
+1. Todas las tareas están marcadas `[X]` y cumplen su "Hecho cuando…".
+2. Las pruebas de todos los servicios afectados pasan, y la cobertura cumple el Principio X.
+3. Cada FR/NFR tiene al menos una prueba con su ID en el nombre.
+4. Las pruebas negativas de seguridad (Principios II, IV, V y VIII) pasan.
+5. `docker compose up` levanta la topología y solo el puerto 443 (y el 80 de redirección) está publicado.
+6. La spec refleja el comportamiento final y la auditoría indica **CONVERGED**.
+
+## 7. Hoja de ruta por funcionalidades
+
+| Spec | Funcionalidad | Depende de |
+|---|---|---|
+| **001** | Núcleo de sesión segura: contraseña + TOTP, BFF, token interno y un subgrafo | — |
+| 002 | Segundo factor biométrico: `bio-svc`, liveness, PAD, ArcFace y enrolamiento | 001, S3 |
+| 003 | Shell + microfrontends heterogéneos (React, Next.js, Angular) | 001, S2 |
+| 004 | Subgrafos académico y biblioteca, y supergrafo GraphQL | 001, S1 |
+| 005 | Administración: usuarios, roles, revocación y reenrolamiento | 001, 002 |
+
+## 8. Instrucciones para el agente de IA
+
+Están en `AGENTS.md` y `CLAUDE.md`.
+
+## 9. Gobernanza
+
+- Esta constitución está **por encima** de cualquier otra práctica del proyecto.
+- **Enmiendas:** se proponen por escrito, se aprueban en G0 y se versionan con SemVer (MAYOR: elimina o redefine un principio; MENOR: agrega uno; PARCHE: aclaraciones).
+- **Historial:** 1.0.0 (2026-10-22), versión inicial derivada de la arquitectura de la tesis.
+
+
+---
+
+# Especificación (Requisitos): Núcleo de Sesión Segura
 
 > **Fase SDD:** 1 – Especificar (qué / por qué) | **Comando Spec Kit:** `/speckit-specify`
 > **Equivale a:** `requirements.md` en la guía SDD
-> **Rama:** `001-gestion-tareas` | **Creado:** 2026-10-21 | **Estado:** ✅ Aprobado (puerta G1)
-> **Entrada (intención humana):** "Necesito una aplicación donde los estudiantes registren sus tareas de cada materia, con fecha de entrega y prioridad, puedan ver qué tienen pendiente ordenado por lo más urgente, marcar su avance y eliminar lo que ya no sirve."
+> **Autor:** Kleber Enrique Chávez Oscullo | **Rama:** `001-nucleo-sesion-segura` | **Iteración:** 1 | **Creado:** 2026-10-22 | **Estado:** ✅ Aprobado (puerta G1)
+> **Entrada (intención):** "Los usuarios de la universidad deben entrar una sola vez con dos factores y usar todos los módulos según su rol. Ningún token puede quedar expuesto en el navegador, y cada servicio debe comprobar por sí mismo quién llama."
 
-Este documento describe el comportamiento **desde el punto de vista del usuario**, sin entrar en tecnología. Las decisiones técnicas van en `plan.md`.
+Este documento describe **qué** debe hacer el sistema y **por qué**. Las tecnologías y los diagramas van en `plan.md`.
 
 ---
 
 ## 1. Contexto y problema
 
-Los estudiantes llevan varias materias a la vez y anotan sus entregas en lugares dispersos (cuadernos, chats, calendarios). Por eso se les olvidan fechas y no tienen una forma clara de decidir qué tarea atender primero.
+El sistema anterior, **Proyecto_LoginSWS**, tiene fallas graves en su autenticación:
 
-**TaskFlow** centraliza las tareas académicas y las ordena por urgencia.
+- Emite un JWT de 30 minutos **antes** de verificar el rostro, así que el segundo factor solo existe en el cliente (hallazgo #1).
+- Guarda el JWT en `localStorage`, donde puede robarse con XSS (#12).
+- Usa HTTP plano (#11) y una clave JWT por defecto (#5).
+- No tiene límite de intentos (#9).
+- Permite cambiar la contraseña sin pedir la actual (#7).
+- Expone perfiles ajenos por IDOR (#8).
+- Sus mensajes permiten enumerar usuarios (#13) y filtran detalles internos (#14).
+
+Esta funcionalidad construye la **base de identidad y sesión** sobre la que se montarán después la biometría (spec 002) y los microfrontends (spec 003). Por eso se resuelve primero el camino **contraseña + TOTP**: demuestra la arquitectura de sesión completa sin depender del resultado del spike S3 (biometría).
 
 ### Objetivos
+- **O1:** Ninguna credencial con acceso a datos antes del segundo factor.
+- **O2:** Ningún token en el navegador; solo una cookie opaca.
+- **O3:** Cada backend verifica la identidad por sí mismo (token interno con `aud` propio).
+- **O4:** Resistencia a fuerza bruta, enumeración, CSRF y fijación de sesión.
 
-- **O1:** Reducir las entregas olvidadas con un registro único.
-- **O2:** Priorizar con una vista ordenada por fecha de entrega y prioridad.
-- **O3:** Seguir el avance de cada tarea.
+### Actores
+| Actor | Rol en el sistema |
+|---|---|
+| Estudiante, Docente, Bibliotecario | Usuarios que inician sesión y operan según su rol (`ESTUDIANTE`, `DOCENTE`, `BIBLIOTECARIO`) |
+| Administrador | Usuario con rol `ADMIN`; en esta iteración, valida el acceso al subgrafo de administración |
 
 ---
 
 ## 2. Historias de usuario
 
-| ID            | Historia                                                                                                                                                 | Prioridad |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| **US1** | Como estudiante, quiero **registrar una tarea** con título, materia, fecha de entrega, prioridad y descripción, para no olvidar ninguna entrega. | P1 🎯 MVP |
-| **US2** | Como estudiante, quiero **ver mis tareas ordenadas** por fecha y prioridad, y **filtrarlas**, para saber qué hacer primero.                 | P1 🎯 MVP |
-| **US3** | Como estudiante, quiero **editar una tarea y marcar su avance**, para mantener mi lista al día.                                                   | P2        |
-| **US4** | Como estudiante, quiero **eliminar tareas** que ya no aplican, para mantener mi lista limpia.                                                      | P3        |
+| ID | Historia | Prioridad |
+|---|---|---|
+| **US1** | Como usuario, quiero **ingresar mi correo y contraseña** y que el sistema me pida el segundo factor **sin darme todavía acceso a nada**, para que robar mi contraseña no baste para entrar. | P1 🎯 |
+| **US2** | Como usuario, quiero **completar el segundo factor con un código TOTP** y quedar con sesión iniciada, para acceder a la plataforma. | P1 🎯 |
+| **US3** | Como usuario con sesión, quiero que el módulo que uso **consulte datos de negocio** sin manejar ningún token, y que solo vea lo que mi rol y mi propiedad permiten. | P1 🎯 |
+| **US4** | Como usuario, quiero **cerrar sesión** y que se cierre en **todas mis pestañas y módulos**, y que mi sesión expire sola si la dejo abierta. | P2 |
+| **US5** | Como usuario, quiero que mi cuenta esté **protegida contra intentos repetidos** de adivinar mi contraseña o mi código. | P2 |
+| **US6** | Como usuario, quiero **cambiar mi contraseña** confirmando la actual, y que se cierren todas mis demás sesiones. | P3 |
+| **US7** | Como responsable de seguridad, quiero que cada acción de autenticación quede **auditada con un identificador de correlación**, sin datos sensibles en los registros. | P3 |
 
 ---
 
 ## 3. Requisitos funcionales (formato EARS)
 
-Plantillas usadas: **Ubicuo** (el sistema DEBE…), **Por evento** (CUANDO…), **No deseado** (SI… ENTONCES…).
+### R1 — Primer factor (US1)
+- **FR-001** CUANDO el usuario envía correo y contraseña, el sistema DEBE verificar la contraseña con Argon2id en tiempo constante. *(D9)*
+- **FR-002** SI el correo no existe, la contraseña es incorrecta o la cuenta está bloqueada, ENTONCES el sistema DEBE responder con **el mismo mensaje genérico, el mismo código HTTP y un tiempo de respuesta equivalente**. *(#13)*
+- **FR-003** CUANDO la contraseña es válida, el sistema DEBE crear una **sesión pendiente** (`PENDIENTE_TOTP`) de **300 s**, sin roles cargados, y entregar solo la cookie `__Host-presid`. **No DEBE emitir ningún token de acceso ni la cookie `__Host-sid`.** *(D1, D9, #1)*
+- **FR-004** MIENTRAS la sesión esté pendiente, el sistema DEBE permitir **solo** el endpoint del segundo factor y DEBE rechazar con **401** cualquier acceso a `/graphql` o a `/bff/session`. *(Diagrama 8)*
 
-### R1 — Registro de tareas (US1)
+### R2 — Segundo factor TOTP (US2)
+- **FR-005** CUANDO el usuario envía un código TOTP con una sesión pendiente vigente, el sistema DEBE validarlo según RFC 6238 con una ventana de ±1 paso.
+- **FR-006** SI el código TOTP ya fue usado (mismo paso de tiempo o uno anterior), ENTONCES el sistema DEBE rechazarlo (**anti-replay**).
+- **FR-007** CUANDO el TOTP es válido, el sistema DEBE eliminar la sesión pendiente y crear una sesión `ACTIVA` con un **identificador nuevo** (contra la fijación de sesión), con `amr = ["pwd","otp"]`, los roles del usuario y un `csrf_secret`. Además DEBE entregar la cookie `__Host-sid` y expirar `__Host-presid`.
+- **FR-008** SI la sesión pendiente expiró (más de 300 s), ENTONCES el sistema DEBE responder **401** y exigir empezar de nuevo desde la contraseña.
+- **FR-009** CUANDO el shell solicita `/bff/session` con una sesión activa, el sistema DEBE devolver `{perfil, roles, csrfToken}` **sin ningún token de acceso**.
 
-- **FR-001** CUANDO el estudiante registra una tarea, el sistema DEBE exigir un título de 1 a 100 caracteres, una materia no vacía y una fecha de entrega válida con formato `AAAA-MM-DD`, y DEBE aceptar una descripción opcional de hasta 500 caracteres.
-- **FR-002** CUANDO una tarea se registra correctamente, el sistema DEBE asignarle un identificador único, el estado `pendiente` y las fechas de creación y modificación, y DEBE responder **201**.
-- **FR-003** El sistema DEBE aceptar como prioridad solo `baja`, `media` o `alta`. SI no se indica la prioridad, ENTONCES el sistema DEBE asignar `media`.
-- **FR-004** SI los datos enviados son inválidos o el JSON está mal formado, ENTONCES el sistema DEBE rechazar la operación con **400** y una lista de mensajes que expliquen cada error.
+### R3 — Propagación de sesión y token interno (US3)
+- **FR-010** CUANDO llega una petición a `/graphql`, el sistema DEBE verificar, **en este orden**, antes de contactar cualquier backend:
+  1. que el método sea `POST`,
+  2. que el `Content-Type` sea `application/json`,
+  3. que el `Origin` sea el propio,
+  4. que la sesión esté `ACTIVA` y no haya expirado,
+  5. que el `X-CSRF-Token` coincida con el de la sesión (comparación en tiempo constante).
+- **FR-011** SI falla la verificación del CSRF o del `Origin`, ENTONCES el sistema DEBE responder **403** y no llamar al subgrafo. SI la sesión no existe, expiró o fue revocada, ENTONCES DEBE responder **401** (nunca 200 con `UNAUTHENTICATED`).
+- **FR-012** CUANDO el `bff` llama a un backend, DEBE emitir un JWT **ES256** con `iss=bff`, `sub`, `roles`, `aud=<servicio destino>`, `typ=at+jwt`, `iat`, `exp ≤ 300 s`, `jti` y `kid`. *(D5)*
+- **FR-013** El `bff` DEBE publicar su clave pública en `/internal/jwks.json`, que es accesible **solo desde la red interna**. SI se pide desde Internet, ENTONCES el `edge-proxy` DEBE responder 404.
+- **FR-014** CUANDO un backend recibe una petición, DEBE validar la firma contra el JWKS (y refrescarlo si el `kid` es desconocido), aceptar **solo** `alg=ES256`, y comprobar `iss`, `aud` (= su propio nombre), `typ` y `exp`. SI alguna validación falla, ENTONCES DEBE rechazar la petición (**fallo cerrado**).
+- **FR-015** CUANDO un backend responde una consulta, DEBE autorizar por **rol** y por **propiedad** del recurso (`recurso.usuario_id = sub`). SI no se cumple, ENTONCES DEBE devolver el error GraphQL `FORBIDDEN`. *(#8)*
+- **FR-016** SI un backend rechaza el token interno, ENTONCES el `bff` DEBE responder un error genérico (502), registrar el evento y **no reintentar con otro `aud`**.
 
-### R2 — Consulta (US2)
+### R4 — Cierre y expiración (US4)
+- **FR-017** CUANDO el usuario cierra sesión, el sistema DEBE eliminar la sesión del almacén, registrar `revocada_en` y `motivo_revocacion`, y expirar la cookie.
+- **FR-018** CUANDO termina la sesión (por cierre, expiración o un 401), el shell DEBE publicar `session:ended` por `BroadcastChannel('auth')` y todas las pestañas y MFE DEBEN limpiar su estado y redirigir a `/sso`. *(D4)*
+- **FR-019** El sistema DEBE expirar la sesión tras **15 min de inactividad** (expiración deslizante) o **8 h absolutas**, lo que ocurra primero.
 
-- **FR-005** CUANDO el estudiante consulta la lista, el sistema DEBE ordenarla por fecha de entrega ascendente y, en caso de empate, por prioridad (`alta` → `media` → `baja`).
-- **FR-006** CUANDO el estudiante filtra por estado, prioridad o materia, el sistema DEBE devolver solo las tareas que coinciden (la materia, sin distinguir mayúsculas). SI el valor del filtro de estado o prioridad no existe, ENTONCES el sistema DEBE responder **400**.
+### R5 — Protección contra fuerza bruta (US5)
+- **FR-020** CUANDO falla la contraseña, el sistema DEBE incrementar `fallos_password`. SI se alcanza el umbral de bloqueo (ver Q3), ENTONCES la cuenta DEBE pasar a `BLOQUEADO` y DEBE notificarse por SMTP.
+- **FR-021** SI se envían **5 códigos TOTP inválidos** en la misma sesión pendiente, ENTONCES el sistema DEBE eliminar esa sesión pendiente.
+- **FR-022** El `edge-proxy` DEBE aplicar **limitación de tasa por IP** en `/bff/auth/*`.
 
-### R3 — Edición y estado (US3)
+### R6 — Cambio de contraseña (US6)
+- **FR-023** CUANDO el usuario cambia su contraseña, el sistema DEBE exigir la contraseña actual y una sesión `ACTIVA`, y DEBE **revocar todas** las sesiones del usuario, incluida la actual. *(#7)*
 
-- **FR-007** El sistema DEBE manejar los estados `pendiente`, `en_progreso` y `completada`. SI se intenta cambiar el estado de una tarea `completada`, ENTONCES el sistema DEBE rechazarlo con **409 Conflicto**.
-- **FR-008** CUANDO el estudiante edita una tarea, el sistema DEBE modificar solo los campos enviados (título, descripción, materia, fecha y prioridad) y actualizar la fecha de modificación. SI se intenta cambiar el estado por esta vía, ENTONCES el sistema DEBE responder **400** e indicar el endpoint de estado.
+### R7 — Auditoría (US7)
+- **FR-024** El sistema DEBE propagar un `X-Request-Id` desde el `edge-proxy` y DEBE registrar cada intento de autenticación (`factor`, `resultado`, `ip`, `correlation_id`) y cada evento de sesión.
+- **FR-025** El sistema NO DEBE registrar contraseñas, códigos o secretos TOTP, cookies, tokens ni datos biométricos en ningún log. *(D12)*
 
-### R4 — Eliminación y errores generales (US4)
+## 4. Requisitos no funcionales
 
-- **FR-009** CUANDO el estudiante elimina una tarea existente, el sistema DEBE borrarla y responder **204**.
-- **FR-010** El sistema DEBE conservar las tareas cuando el servidor se reinicia.
-- **FR-011** SI se consulta, edita o elimina una tarea que no existe, ENTONCES el sistema DEBE responder **404**.
-- **FR-012** SI se solicita una ruta inexistente o un método no soportado, ENTONCES el sistema DEBE responder **404** o **405** respectivamente.
-
-### Requisitos no funcionales
-
-| ID                | Requisito (verificable)                                                                                                                                                                                                                           |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **NFR-001** | Todas las respuestas DEBEN ser JSON en UTF-8.                                                                                                                                                                                                     |
-| **NFR-002** | Con 1 000 tareas almacenadas, consultar la lista filtrada DEBE tardar **< 200 ms (p95)** en un equipo de desarrollo.                                                                                                                        |
-| **NFR-003** | La cobertura de pruebas DEBE cumplir los umbrales de la Constitución (líneas ≥ 90 %, ramas ≥ 85 %).                                                                                                                                           |
-| **NFR-004** | SI el cuerpo supera 10 KB, ENTONCES el sistema DEBE responder **413**. SI ocurre un error inesperado, ENTONCES DEBE responder **500** sin exponer detalles internos. Toda respuesta DEBE incluir `X-Content-Type-Options: nosniff`. |
-| **NFR-005** | El sistema NO DEBE requerir dependencias externas para ejecutarse.                                                                                                                                                                                |
+| ID | Requisito (verificable) | Origen |
+|---|---|---|
+| **NFR-001** | Todo el tráfico externo usa HTTPS (TLS 1.2+/1.3) con HSTS. El puerto 80 solo redirige a 443. | #11 |
+| **NFR-002** | Las respuestas incluyen CSP, `X-Content-Type-Options: nosniff`, `Referrer-Policy` y `Permissions-Policy: camera=(self)`. | Diagrama 2 |
+| **NFR-003** | Solo `edge-proxy` publica puertos. `bff`, `auth-svc`, `admin-svc`, Redis y PostgreSQL no tienen puertos publicados. | D6 |
+| **NFR-004** | Las claves y contraseñas se leen de Docker secrets. SI falta un secreto, ENTONCES el servicio no arranca. | #5 |
+| **NFR-005** | Swagger (FastAPI) e introspección GraphQL quedan deshabilitados en producción. | #16 |
+| **NFR-006** | Los errores 4xx y 5xx no contienen trazas, `str(e)` ni rutas internas. | #14 |
+| **NFR-007** | Un usuario de base de datos por servicio, sin privilegios de DDL en tiempo de ejecución. | D12 |
+| **NFR-008** | La sobrecarga del `bff` (sesión + CSRF + emisión del token) es **< 50 ms p95** por petición `/graphql` en el entorno de laboratorio. | Propuesta |
+| **NFR-009** | Cobertura según la Constitución X (líneas ≥ 85 %, ramas ≥ 80 %; ≥ 90 % de ramas en módulos de seguridad). | Constitución |
 
 ---
 
-## 4. Criterios de aceptación (Gherkin)
+## 5. Criterios de aceptación (Gherkin)
 
-| #     | Dado                                              | Cuando                                     | Entonces                                                        | Req.           |
-| ----- | ------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------- | -------------- |
-| CA-01 | título, materia y fecha válidos                 | registro la tarea                          | se guarda como `pendiente`, con `id` único, y responde 201 | FR-001, FR-002 |
-| CA-02 | no envío la prioridad                            | registro la tarea                          | queda con prioridad `media`                                   | FR-003         |
-| CA-03 | omito el título o envío la fecha `2026-02-30` | registro la tarea                          | responde 400 con la lista de errores                            | FR-001, FR-004 |
-| CA-04 | envío un JSON mal formado                        | registro la tarea                          | responde 400 "JSON mal formado"                                 | FR-004         |
-| CA-05 | tareas con fechas distintas                       | consulto la lista                          | aparecen de la más próxima a la más lejana                   | FR-005         |
-| CA-06 | dos tareas con la misma fecha                     | consulto la lista                          | primero `alta`, luego `media` y luego `baja`              | FR-005         |
-| CA-07 | tareas de "Redes" y "Gestión"                    | filtro `subject=redes`                   | solo aparecen las de "Redes"                                    | FR-006         |
-| CA-08 | —                                                | filtro `priority=urgente`                | responde 400                                                    | FR-006         |
-| CA-09 | una tarea existente                               | edito solo la prioridad                    | los demás campos no cambian y `updatedAt` se actualiza       | FR-008         |
-| CA-10 | una tarea `pendiente`                           | la paso a `en_progreso` o `completada` | se acepta el cambio                                             | FR-007         |
-| CA-11 | una tarea `completada`                          | intento cambiarle el estado                | responde 409                                                    | FR-007         |
-| CA-12 | una tarea existente                               | envío `status` en la edición general   | responde 400                                                    | FR-008         |
-| CA-13 | una tarea existente                               | la elimino                                 | responde 204 y deja de aparecer                                 | FR-009         |
-| CA-14 | un `id` inexistente                             | consulto o elimino                         | responde 404                                                    | FR-011         |
-| CA-15 | tareas guardadas                                  | reinicio el servidor                       | las tareas siguen disponibles                                   | FR-010         |
+| # | Dado | Cuando | Entonces | Req. |
+|---|---|---|---|---|
+| CA-01 | un usuario con TOTP activo | envía la contraseña correcta | recibe 200 `{siguiente_factor: "TOTP"}` y solo la cookie `__Host-presid`, sin ningún token | FR-001, FR-003 |
+| CA-02 | un correo inexistente, otro existente con la contraseña incorrecta y una cuenta bloqueada | se intenta el login con cada uno | las tres respuestas son idénticas en código y cuerpo, y su tiempo difiere < 50 ms | FR-002 |
+| CA-03 | una sesión pendiente | se llama a `/graphql` o a `/bff/session` | responde 401 | FR-004 |
+| CA-04 | una sesión pendiente | se envía un TOTP válido | se entrega `__Host-sid` con un id distinto al de la sesión pendiente, y `__Host-presid` expira | FR-005, FR-007 |
+| CA-05 | un código TOTP ya aceptado | se reenvía | se rechaza | FR-006 |
+| CA-06 | una sesión pendiente creada hace 301 s | se envía un TOTP | responde 401 | FR-008 |
+| CA-07 | una sesión activa | el shell pide `/bff/session` | recibe perfil, roles y `csrfToken`; el cuerpo no contiene ningún JWT | FR-009 |
+| CA-08 | una sesión activa | se llama a `/graphql` sin `X-CSRF-Token` o con un `Origin` ajeno | responde 403 y el subgrafo no recibe la llamada | FR-010, FR-011 |
+| CA-09 | una sesión activa y un CSRF correcto | se consulta `/graphql` | el subgrafo recibe un JWT ES256 con `aud=admin-svc`, `typ=at+jwt` y `exp − iat ≤ 300` | FR-012 |
+| CA-10 | un token firmado con `aud=auth-svc` | se presenta a `admin-svc` | `admin-svc` lo rechaza | FR-014 |
+| CA-11 | un token con `alg=none` o HS256, o vencido | se presenta a un backend | el backend lo rechaza | FR-014 |
+| CA-12 | un estudiante | consulta un recurso de otro usuario o una operación de `ADMIN` | recibe `FORBIDDEN` | FR-015 |
+| CA-13 | una sesión activa en 2 pestañas | se cierra sesión en una | la otra recibe `session:ended` y redirige a `/sso`; la cookie anterior da 401 | FR-017, FR-018 |
+| CA-14 | una sesión sin actividad durante 15 min | se hace una petición | responde 401 | FR-019 |
+| CA-15 | 5 TOTP inválidos en una sesión pendiente | se envía el 6.º | responde 401 y hay que reiniciar desde la contraseña | FR-021 |
+| CA-16 | un usuario con 2 sesiones activas | cambia su contraseña con la actual correcta | ambas sesiones quedan revocadas | FR-023 |
+| CA-17 | cualquier flujo de login | se revisan los logs | contienen `correlation_id` y no contienen la contraseña, el código TOTP, la cookie ni el token | FR-024, FR-025 |
+| CA-18 | la topología levantada | se escanean los puertos del host | solo están abiertos el 443 y el 80 | NFR-003 |
+| CA-19 | `/internal/jwks.json` | se pide desde Internet | responde 404 | FR-013 |
+| CA-20 | una cuenta activa | se falla la contraseña hasta el umbral de Q3 | la cuenta pasa a `BLOQUEADO`, la respuesta sigue siendo la genérica de CA-02 y se registra la notificación | FR-020 |
+| CA-21 | una IP | envía a `/bff/auth/*` más peticiones que el límite configurado | recibe 429 | FR-022 |
+| CA-22 | un subgrafo que rechaza el token interno | se consulta `/graphql` | el `bff` responde 502 genérico, registra el evento y hace **una sola** llamada al subgrafo | FR-016 |
 
-## 5. Casos límite y errores
+## 6. Casos límite y errores
 
-- Título con espacios a los lados: se recortan. Un título hecho solo de espacios es inválido.
-- Título > 100 caracteres o descripción > 500 caracteres → 400.
-- Fecha inexistente en el calendario (`2026-02-30`) o con otro formato (`15/11/2026`) → 400.
-- Cuerpo > 10 KB → 413. Petición sin cuerpo → 400.
-- Ruta inexistente → 404. Método no soportado → 405.
-- Error inesperado → 500 genérico.
-- Archivo de datos vacío al arrancar → el sistema inicia sin tareas.
+- Correo con mayúsculas o espacios: se normaliza (`CITEXT` y recorte).
+- Contraseña muy larga: se limita el tamaño de la petición en `edge-proxy` y en el `bff` para no saturar Argon2id.
+- Reloj del servidor desfasado: la ventana de ±1 paso cubre 30 s; si el desfase es mayor, se registra una alerta.
+- Peticiones simultáneas con el mismo TOTP: solo una puede consumir el paso (actualización atómica de `ultimo_paso_usado`).
+- El `kid` cambia durante la rotación: los backends refrescan el JWKS una sola vez antes de rechazar.
+- Redis no disponible: el `bff` responde 503 y **nunca** "abre" el acceso.
 
-## 6. Fuera de alcance (esta iteración NO incluye)
+## 7. Fuera de alcance de esta iteración
 
-- ❌ Usuarios, registro e inicio de sesión (multiusuario).
-- ❌ Notificaciones o recordatorios de entregas.
-- ❌ Interfaz gráfica web o móvil.
-- ❌ Base de datos relacional.
-- ❌ Adjuntar archivos a las tareas.
+- ❌ Segundo factor **biométrico**, liveness, PAD, enrolamiento facial y consentimiento LOPDP → **spec 002** (depende del spike S3).
+- ❌ Microfrontends reales en React, Next.js y Angular → **spec 003** (depende del spike S2). En esta iteración el shell es **mínimo**: login, TOTP, sesión, una consulta y logout.
+- ❌ Supergrafo GraphQL con Hive Gateway → **spec 004** (depende del spike S1). Esta iteración usa el **plan B** de D7.
+- ❌ Subgrafos académico (Spring Boot) y biblioteca (Laravel) → spec 004.
+- ❌ Gestión de usuarios y roles desde la interfaz → spec 005. Los usuarios se crean con un script de *seed*.
+- ❌ mTLS y service mesh (NIST REC-1): trabajo futuro, declarado en la Constitución IV.
 
-## 7. Preguntas abiertas
+## 8. Preguntas abiertas
 
-| #  | Pregunta                                       | Responsable   | Resolución                                                                  |
-| -- | ---------------------------------------------- | ------------- | ---------------------------------------------------------------------------- |
-| Q1 | ¿Se aceptan fechas de entrega ya pasadas?     | Product Owner | ✅ **Sí.** El estudiante puede registrar tareas atrasadas.            |
-| Q2 | ¿Una tarea `completada` se puede reabrir?   | Product Owner | ✅ **No.** Es un estado final; para rehacerla se crea una tarea nueva. |
-| Q3 | ¿El filtro de materia distingue mayúsculas?  | Product Owner | ✅ **No.** `redes` = `Redes`.                                      |
-| Q4 | ¿Cuántas tareas debe soportar un estudiante? | Product Owner | ✅ Hasta **1 000** con buen rendimiento (→ NFR-002).                  |
-| Q5 | ¿Se necesita multiusuario?                    | Product Owner | ⏭️ Pasa a la iteración 2 (`002-usuarios`).                              |
+| # | Pregunta | Responsable | Estado |
+|---|---|---|---|
+| Q1 | ¿`auth-svc` será un proveedor OIDC estándar o entregará una aserción propietaria al `bff`? | Autor + tutor | ⏳ Se decide **antes de S2**. Provisionalmente: **aserción propietaria** por la red interna (ADR-04 del plan). |
+| Q2 | ¿Supergrafo o BFF sin supergrafo? | Autor | ✅ Iteración 1: **plan B** (BFF enruta a `admin-svc`). La decisión definitiva depende de S1. |
+| Q3 | ¿Cuál es el umbral de `fallos_password` para bloquear la cuenta? | Tutor | ⏳ **Propuesta: 10 fallos consecutivos → `BLOQUEADO`**, y se desbloquea con un administrador. La arquitectura no fija el valor. |
+| Q4 | ¿El cambio de contraseña revoca también la sesión actual? | Autor | ✅ **Sí.** Revoca todas, por ser lo más seguro, y el usuario vuelve a iniciar sesión. |
+| Q5 | ¿Cuál es la ventana de tolerancia del TOTP? | Autor | ✅ ±1 paso (30 s), según el diagrama 3. |
 
-## 8. Criterios de éxito
+## 9. Criterios de éxito
 
-- **SC-001:** El 100 % de los criterios de aceptación CA-01 a CA-15 tienen una prueba automatizada que pasa.
-- **SC-002:** Ninguna petición inválida produce un 500: todas responden 4xx.
-- **SC-003:** El requisito NFR-002 se verifica de forma automática.
+- **SC-001:** En **ningún** paso previo a CA-04 el navegador tiene una credencial con acceso a datos (lo verifica una prueba e2e).
+- **SC-002:** El 100 % de los criterios CA-01 a CA-22 tienen una prueba automatizada que pasa.
+- **SC-003:** Los hallazgos de LoginSWS #1, #5, #7, #8, #9, #11, #12, #13 y #14 quedan cerrados con evidencia.
 
 ---
 
 ## ✅ Puerta G1 — Checklist antes de aprobar los requisitos
 
-- [X] El problema y el valor para el usuario están claros (§1).
-- [X] Cada requisito es verificable y tiene un ID (FR-001 a FR-012, NFR-001 a NFR-005).
-- [X] Hay casos límite y de error (§5).
-- [X] Está definido lo que queda fuera de alcance (§6).
-- [X] No menciona tecnologías innecesariamente (el stack está en `plan.md`).
-- [X] Las preguntas abiertas están resueltas o asignadas (§7).
+- [X] El problema y el valor están claros (§1, con los hallazgos de LoginSWS).
+- [X] Cada requisito es verificable y tiene un ID (FR-001 a FR-025, NFR-001 a NFR-009).
+- [X] Hay casos límite y de error (§6).
+- [X] Está definido lo que queda fuera de alcance (§7, con la spec destino).
+- [X] No menciona tecnologías innecesariamente. Solo aparecen los estándares que fija la Constitución (Argon2id, RFC 6238, ES256).
+- [X] Las preguntas abiertas están resueltas o asignadas (§8: Q1 y Q3 asignadas, con valor provisional).
 
-**Aprobado por:** Product Owner, 2026-10-21.
+**Elaborado por:** Kleber Enrique Chávez Oscullo · **Aprobado por:** ____________________ (tutor), fecha: __________
+
 
 ---
 
-# Plan Técnico (Diseño): Gestión de Tareas Académicas
+# Plan Técnico (Diseño): Núcleo de Sesión Segura
 
 > **Fase SDD:** 2 – Diseñar / Planificar (cómo) | **Comando Spec Kit:** `/speckit-plan`
 > **Equivale a:** `design.md` en la guía SDD
-> **Rama:** `001-gestion-tareas` | **Fecha:** 2026-10-21 | **Estado:** ✅ Aprobado (puerta G2)
-> **Entradas:** [`spec.md`](./02_Especificacion_speckit-specify.md) · [`constitution.md`](./01_Constitucion_speckit-constitution.md)
+> **Autor:** Kleber Enrique Chávez Oscullo | **Rama:** `001-nucleo-sesion-segura` | **Fecha:** 2026-10-22 | **Estado:** ✅ Aprobado (puerta G2)
+> **Entradas:** [`spec.md`](./02_Especificacion_speckit-specify.md) · [`constitution.md`](./01_Constitucion_speckit-constitution.md) · documento de arquitectura de la tesis (diagramas 1–10)
 
 ---
 
 ## 1. Resumen
 
-Se construirá una **API REST** en Node.js, sin dependencias externas, que cumple los requisitos FR-001 a FR-012 y NFR-001 a NFR-005. Tiene cuatro capas (HTTP, servicios, dominio y repositorio) y guarda los datos en un archivo JSON con escritura atómica.
+Se construye el **esqueleto andante** (*walking skeleton*) de la arquitectura: el camino completo entre el navegador y un subgrafo de dominio, con la sesión basada en cookie en el `bff`, el segundo factor TOTP decidido en `auth-svc` y un token interno ES256 con `aud` validado por `admin-svc`. Con esto quedan probadas en código las decisiones D1–D6, D9 (ruta TOTP), D11 (bloqueos de contraseña) y D12, que son la base para la biometría (002) y los microfrontends (003).
 
 ## 2. Contexto técnico
 
-| Aspecto             | Decisión                                                            |
-| ------------------- | -------------------------------------------------------------------- |
-| Lenguaje / versión | JavaScript (CommonJS), Node.js ≥ 20 LTS                             |
-| Dependencias        | Ninguna (`node:http`, `node:fs`, `node:crypto`, `node:test`) |
-| Almacenamiento      | `data/tasks.json` + caché en memoria (`Map`)                    |
-| Pruebas             | `node:test`; integración con `fetch` nativo                     |
-| Meta de desempeño  | < 200 ms p95 con 1 000 tareas (NFR-002)                              |
-| Restricciones       | Cuerpo ≤ 10 KB; JSON UTF-8                                          |
+| Aspecto | Decisión |
+|---|---|
+| Servicios de esta iteración | `edge-proxy`, `shell` (mínimo), `bff`, `session-store`, `auth-svc`, `auth-db`, `admin-svc`, `admin-db` |
+| `bff` / `admin-svc` | NestJS (TypeScript), `jose` para JOSE/JWKS, `ioredis` |
+| `auth-svc` | FastAPI (Python 3.12), SQLAlchemy 2, `argon2-cffi`, `pyotp`, `PyJWT[crypto]`, `cryptography` (AES-GCM para el secreto TOTP) |
+| Almacenes | Redis (sesiones) y PostgreSQL (`auth-db`, `admin-db`) |
+| Proxy | Caddy (TLS interno en laboratorio, HSTS y cabeceras) |
+| Pruebas | Jest + Supertest (NestJS), pytest + httpx (FastAPI), Playwright (e2e de 2 pestañas) |
+| Despliegue | Docker Compose v2 con redes `internal` y Docker secrets |
+| Restricciones | Ningún token en el navegador, ningún puerto publicado salvo 443/80, fallo cerrado |
 
 ## 3. Verificación de la Constitución
 
-| Principio                     | ¿Lo cumple? | Cómo                                                                       |
-| ----------------------------- | ------------ | --------------------------------------------------------------------------- |
-| I. Spec como fuente de verdad | ✅           | Spec aprobada en G1; cada decisión cita FR/NFR                             |
-| II. Arquitectura por capas    | ✅           | `http → services → domain`, `services → repository`; errores tipados |
-| III. Requisitos verificables  | ✅           | Estrategia de pruebas con el ID del requisito en el nombre (§8)            |
-| IV. Incrementos pequeños     | ✅           | 26 tareas atómicas con "Hecho cuando…"                                    |
-| V. Seguridad                  | ✅           | Validación, 10 KB, 500 genérico y `nosniff`                             |
-| VI. Contratos                 | ✅           | Contrato de API en §6                                                      |
-| VII. Spec viva                | ✅           | Artefactos versionados en el repositorio                                    |
+| Principio | ¿Lo cumple? | Cómo |
+|---|---|---|
+| I. Spec como fuente de verdad | ✅ | Cada componente y ADR cita FR/NFR y D/# |
+| II. Ningún token en el navegador | ✅ | Solo `__Host-presid` y `__Host-sid`; `/bff/session` no devuelve JWT (§6) |
+| III. Mismo origen | ✅ | Caddy enruta `/`, `/bff/*` y `/graphql` en un solo dominio; sin CORS |
+| IV. Zero Trust declarado | ✅ | Token ES256 por `aud` (§7); redes internas (§10); mTLS fuera de alcance |
+| V. 2.º factor en el servidor | ✅ | La transición `PENDIENTE_TOTP → ACTIVA` solo ocurre en el `bff` tras la respuesta de `auth-svc` |
+| VI. Datos biométricos | N/A | No hay biometría en esta iteración (spec 002) |
+| VII. BD por servicio | ✅ | `auth-db` y `admin-db` separadas, con usuarios distintos |
+| VIII. Errores genéricos | ✅ | Respuesta uniforme y hash ficticio para correos inexistentes (ADR-05) |
+| IX. Secretos | ✅ | Docker secrets y arranque fallido si falta uno (ADR-08) |
+| X. Pruebas trazables | ✅ | Estrategia §11 |
+| XI. Incrementos pequeños | ✅ | 34 tareas en `tasks.md` |
 
-**Complexity Tracking:** sin entradas, porque no se agregan dependencias ni hay excepciones a la constitución.
+**Complexity Tracking**
 
-## 4. Componentes y arquitectura
+| Dependencia | Justificación |
+|---|---|
+| `jose` (bff, admin-svc) | Implementación auditada de JWS/JWKS. Hacerlo a mano es un riesgo de seguridad. |
+| `argon2-cffi`, `pyotp` | Algoritmos exigidos por D9 y RFC 6238. |
+| `cryptography` | AES-256-GCM para cifrar el secreto TOTP en reposo (`factor_totp.secreto_cifrado`). |
+| `ioredis` | Cliente oficial de Redis para Node. |
 
-```
-                ┌────────────────────────────────────────┐
-  Cliente ────► │  HTTP  (src/http/app.js)               │  rutas, parseo JSON, 10 KB,
-                │                                        │  errores → códigos HTTP
-                └──────────────┬─────────────────────────┘
-                               │
-                ┌──────────────▼─────────────────────────┐
-                │  Servicios (src/services/taskService)  │  casos de uso US1–US4
-                └───────┬───────────────────────┬────────┘
-                        │                       │
-        ┌───────────────▼──────────┐   ┌────────▼────────────────────────┐
-        │ Dominio (src/domain/task)│   │ Repositorio                     │
-        │ validación, entidad,     │   │ (src/repository/taskRepository) │
-        │ máquina de estados       │   │ Map + JSON atómico              │
-        └──────────────────────────┘   └─────────────────────────────────┘
-```
+---
 
-| Componente                       | Responsabilidad                                           | Requisitos                                     |
-| -------------------------------- | --------------------------------------------------------- | ---------------------------------------------- |
-| `domain/task.js`               | Entidad Tarea, validación, fechas y transiciones         | FR-001, FR-002, FR-003, FR-004, FR-007, FR-008 |
-| `services/taskService.js`      | Crear, listar, obtener, editar, cambiar estado y eliminar | FR-005, FR-006, FR-007, FR-008, FR-009, FR-011 |
-| `repository/taskRepository.js` | Persistencia y copias defensivas                          | FR-010                                         |
-| `http/app.js`                  | Contrato REST y mapeo de errores                          | FR-004, FR-012, NFR-001, NFR-004               |
-| `server.js`                    | Arranque con variables de entorno                         | Constitución V                                |
-
-### Estructura de carpetas
+## 4. Contexto y contenedores (diagramas 1 y 2, recortados a la iteración 1)
 
 ```
-taskflow-sdd/
-├── AGENTS.md / CLAUDE.md            # instrucciones para el agente de IA
-├── .specify/memory/constitution.md  # Fase 0
-├── specs/001-gestion-tareas/
-│   ├── spec.md                      # Fase 1 (requisitos)
-│   ├── plan.md                      # Fase 2 (diseño)
-│   ├── tasks.md                     # Fase 3
-│   ├── implement-report.md          # Fase 4
-│   └── coverage-audit.md            # Fase 5 (validación / auditoría)
-├── src/ {domain, repository, services, http, server.js}
-└── tests/ {domain, service, api}.test.js
+ Z0 Internet / navegador          Z1 Borde (DMZ)        Z2 Aplicación (net-app, internal)      Z4 Datos (net-data, internal)
+ ┌──────────────────────┐        ┌──────────────┐      ┌───────────────────────────────┐      ┌──────────────┐
+ │ shell (mínimo)       │ HTTPS  │ edge-proxy   │ HTTP │ bff (NestJS)                  │      │              │
+ │  authFetch + CSRF    │──443──►│ Caddy        │─────►│  sesión, CSRF, emisor ES256,  │─RESP─► session-store │
+ │  BroadcastChannel    │ cookie │ TLS, HSTS,   │ +XRId│  JWKS interno, /graphql (B)   │      │  (Redis)     │
+ └──────────────────────┘        │ CSP, rate    │      └──────┬──────────────┬─────────┘      │              │
+                                 │ limit, 404   │             │ JWT aud=      │ JWT aud=       │              │
+                                 │ /internal/*  │             │ auth-svc      │ admin-svc      │              │
+                                 └──────────────┘      ┌──────▼──────┐ ┌─────▼──────────┐     │              │
+                                                       │ auth-svc    │ │ admin-svc      │     │              │
+                                                       │ FastAPI     │ │ NestJS subgrafo│     │              │
+                                                       └──────┬──────┘ └─────┬──────────┘     │              │
+                                                              └──── SQL ─────┴──── SQL ──────►│ auth-db      │
+                                                                                              │ admin-db     │
+                                                                                              └──────────────┘
 ```
 
-## 5. Modelo de datos
+| Contenedor | Zona | Responsabilidad en la iteración 1 | Requisitos |
+|---|---|---|---|
+| `shell` (mínimo) | Z0 | Formularios de contraseña y TOTP, `GET /bff/session`, una consulta GraphQL, logout. `authFetch` con `credentials:'include'` + `X-CSRF-Token`. Escucha y publica en `BroadcastChannel('auth')`. | FR-009, FR-018 |
+| `edge-proxy` | Z1 | TLS, HSTS, CSP, `nosniff`, `Referrer-Policy`, `Permissions-Policy`; enrutamiento por prefijo; `X-Request-Id`; límite de cuerpo; rate limit en `/bff/auth/*`; **404 para `/internal/*`**. | FR-013, FR-022, FR-024, NFR-001, NFR-002 |
+| `bff` | Z2 | Endpoints `/bff/auth/*`, `/bff/session` y `/graphql` (plan B → `admin-svc`); emisor ES256; `/internal/jwks.json`. | FR-003, FR-004, FR-007 a FR-013, FR-016, FR-017, FR-019 |
+| `session-store` | Z2 | `presess:*`, `sess:*` y `user_sessions:*` con TTL. | FR-003, FR-019, FR-023 |
+| `auth-svc` | Z2 | Argon2id, TOTP con anti-replay, roles, contadores de bloqueo, cambio de contraseña, intentos y auditoría. | FR-001, FR-002, FR-005, FR-006, FR-020, FR-021, FR-023, FR-024 |
+| `admin-svc` | Z2 | Subgrafo GraphQL `me` y `panelAdmin`. Valida el token y autoriza por rol y propiedad. | FR-014, FR-015 |
+| `auth-db`, `admin-db` | Z4 | PostgreSQL; un usuario por servicio. | NFR-007 |
 
-| Campo                        | Tipo           | Notas                                                     | Req.           |
-| ---------------------------- | -------------- | --------------------------------------------------------- | -------------- |
-| `id`                       | UUID v4        | `crypto.randomUUID()`                                   | FR-002         |
-| `title`                    | string         | 1–100 caracteres, recortado                              | FR-001         |
-| `description`              | string         | ≤ 500 caracteres, `""` por defecto                     | FR-001         |
-| `subject`                  | string         | obligatorio                                               | FR-001         |
-| `dueDate`                  | `AAAA-MM-DD` | válida en el calendario                                  | FR-001         |
-| `priority`                 | enum           | `baja` \| `media` \| `alta` (por defecto `media`) | FR-003         |
-| `status`                   | enum           | `pendiente` \| `en_progreso` \| `completada`        | FR-007         |
-| `createdAt`, `updatedAt` | ISO-8601       | generados por el sistema                                  | FR-002, FR-008 |
+**Componentes de la arquitectura que esta iteración no incluye:** `bio-svc`, `bio-db`, `mf-*` reales, Hive Gateway, `academico-svc`, `biblioteca-svc`, SMTP real (se usa un *stub* que registra el envío) y AWS Liveness.
 
-### Máquina de estados (FR-007)
+---
+
+## 5. Secuencia: login con contraseña + TOTP (variante TOTP del diagrama 3)
 
 ```
-  pendiente ◄──────► en_progreso
-      │                   │
-      └──────► completada ◄┘     (estado final → 409 si se intenta salir)
+Usuario   shell      edge-proxy     bff              session-store    auth-svc            auth-db
+  │ correo+pwd │          │           │                    │               │                   │
+  │───────────►│ POST /bff/auth/password {email,password}  │               │                   │
+  │            │─────────►│──XRId────►│ JWT aud=auth-svc ──────────────────►│ leer usuario,     │
+  │            │          │           │                    │               │ hash, bloqueo ───►│
+  │            │          │           │                    │               │ Argon2id verify   │
+  │            │          │           │                    │               │ (o hash ficticio) │
+  │            │          │           │                    │               │ registrar intento►│
+  │            │          │           │◄── {user_ref, siguiente_factor:"TOTP"} ─────────────────│
+  │            │          │           │ SET presess:{h} TTL 300 ──────────►│                   │
+  │            │◄─────────│◄──────────│ Set-Cookie __Host-presid (Max-Age=300) — SIN TOKEN       │
+  │ código TOTP│          │           │                    │               │                   │
+  │───────────►│ POST /bff/auth/totp {code} + presid        │               │                   │
+  │            │─────────►│──────────►│ GET presess ──────►│               │                   │
+  │            │          │           │ JWT aud=auth-svc ──────────────────►│ RFC 6238 ±1,      │
+  │            │          │           │                    │               │ UPDATE atómico    │
+  │            │          │           │                    │               │ ultimo_paso_usado►│
+  │            │          │           │◄── aserción {sub, roles, amr:[pwd,otp], auth_time} ─────│
+  │            │          │           │ DEL presess; SET sess:{nuevo} (15 min / 8 h) ──►│       │
+  │            │◄─────────│◄──────────│ Set-Cookie __Host-sid; __Host-presid=; Max-Age=0         │
+  │            │ GET /bff/session ───►│──────────►│ → {perfil, roles, csrfToken}                 │
+  │            │ BroadcastChannel: session:started │                                            │
 ```
 
-## 6. Contrato de la API (v1)
+**Alternativas (`alt`):** contraseña inválida, usuario inexistente o cuenta bloqueada → **401 genérico idéntico**. TOTP inválido → 401 y `fallos_totp++` en la sesión pendiente; al 5.º se borra la sesión pendiente. Sesión pendiente vencida → 401.
 
-| Método    | Ruta                                  | Éxito      | Errores       | Req.            |
-| ---------- | ------------------------------------- | ----------- | ------------- | --------------- |
-| `GET`    | `/health`                           | 200         | —            | NFR-001         |
-| `POST`   | `/tasks`                            | 201 Tarea   | 400, 413      | FR-001 a FR-004 |
-| `GET`    | `/tasks?status=&priority=&subject=` | 200 Tarea[] | 400           | FR-005, FR-006  |
-| `GET`    | `/tasks/:id`                        | 200 Tarea   | 404           | FR-011          |
-| `PATCH`  | `/tasks/:id`                        | 200 Tarea   | 400, 404      | FR-008          |
-| `PATCH`  | `/tasks/:id/status`                 | 200 Tarea   | 400, 404, 409 | FR-007          |
-| `DELETE` | `/tasks/:id`                        | 204         | 404           | FR-009          |
-| *otra*   | —                                    | —          | 404 / 405     | FR-012          |
+## 6. Secuencia: propagación de sesión (diagrama 4, con `admin-svc` como subgrafo)
 
-**Formato de error:** `{ "error": "mensaje", "details": ["..."] }`
+1. `shell` → `POST /graphql` con la cookie `__Host-sid`, `X-CSRF-Token` y `Content-Type: application/json`.
+2. `edge-proxy` agrega `X-Request-Id` y reenvía al `bff`.
+3. El `bff` valida, **en orden**: método `POST` → `Content-Type` → `Origin` → sesión `ACTIVA` y no vencida (y renueva el TTL deslizante) → CSRF en tiempo constante.
+4. El `bff` emite el JWT `{iss:"bff", sub, roles, aud:"admin-svc", typ:"at+jwt", iat, exp:+300, jti, kid}`.
+5. El `bff` → `admin-svc` `POST /graphql` con `Authorization: Bearer` y `X-Request-Id`.
+6. `admin-svc` valida con el JWKS en caché, autoriza por rol y propiedad, y responde.
 
-## 7. Decisiones (formato ADR) y alternativas descartadas
+| Condición | Respuesta |
+|---|---|
+| Sesión inexistente, vencida o revocada | **401** → el shell publica `session:ended` |
+| CSRF inválido u `Origin` ajeno | **403**, sin llamar al subgrafo |
+| El subgrafo rechaza el token | **502** genérico y auditoría; sin reintento |
+| Rol o propiedad insuficiente | Error GraphQL `FORBIDDEN` |
 
-| ADR    | Decisión                                                         | Alternativas descartadas y por qué                                                                                                                               | Req.           |
-| ------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| ADR-01 | `node:http` nativo                                              | **Express/Fastify:** agregan dependencias (lo prohíbe la Constitución) y son innecesarios para 7 rutas.                                                   | NFR-005        |
-| ADR-02 | Archivo JSON con escritura atómica (tmp + `rename`)            | **SQLite/PostgreSQL:** requieren instalación y sobran para un solo usuario. **Escritura directa:** corrompe el archivo si el proceso se cae a mitad. | FR-010         |
-| ADR-03 | Endpoint separado `PATCH /tasks/:id/status`                     | **Cambiar `status` en el PATCH general:** mezcla validación de campos con reglas de transición y hace difícil devolver un 409 claro.                   | FR-007, FR-008 |
-| ADR-04 | Errores de dominio tipados y mapeados a HTTP en una sola función | **Strings o códigos dentro de los servicios:** acoplan el dominio a HTTP (viola el Principio II).                                                          | FR-004, FR-011 |
-| ADR-05 | Copias defensivas en el repositorio                               | **Devolver referencias:** permite mutar el estado sin pasar por las validaciones.                                                                           | Principio II   |
-| ADR-06 | Descartar el resto del cuerpo > 10 KB y responder 413             | **Cortar el socket (`req.destroy()`):** el cliente no recibe la respuesta 413. *(Lo descubrió una prueba durante la implementación; ver AUD-01.)*     | NFR-004        |
-| ADR-07 | Filtrado y orden en memoria O(n log n)                            | **Índices:** innecesarios para 1 000 tareas; se mide con la prueba NFR-002.                                                                                | NFR-002        |
+## 7. Contrato del token interno
 
-## 8. Estrategia de pruebas
+| Claim / cabecera | Valor | Lo valida el backend |
+|---|---|---|
+| `alg` (cabecera) | `ES256` (lista blanca) | ✅ rechaza `none`, `HS*`, `RS*` |
+| `typ` (cabecera) | `at+jwt` | ✅ |
+| `kid` (cabecera) | id de la clave activa | refresca el JWKS si es desconocido |
+| `iss` | `bff` | ✅ |
+| `aud` | `auth-svc` \| `admin-svc` (uno solo) | ✅ igual a su propio nombre |
+| `sub` | UUID del usuario | autorización por propiedad |
+| `roles` | p. ej. `["ESTUDIANTE"]` | autorización por rol |
+| `iat`, `exp` | `exp − iat ≤ 300` | ✅ con tolerancia de reloj ≤ 30 s |
+| `jti` | UUID | auditoría |
 
-| Nivel                   | Archivo                   | Qué verifica                                                 |
-| ----------------------- | ------------------------- | ------------------------------------------------------------- |
-| Unitarias de dominio    | `tests/domain.test.js`  | Validación, fechas, valores por defecto y transiciones       |
-| Servicio + persistencia | `tests/service.test.js` | Casos de uso, orden, filtros y archivo JSON                   |
-| Integración HTTP       | `tests/api.test.js`     | Contrato completo, 4xx/5xx, seguridad y rendimiento (NFR-002) |
+**Rotación:** el `bff` publica la clave nueva en el JWKS **antes** de firmar con ella. La clave anterior sigue publicada mientras viva el token más largo (5 min) más un margen.
 
-- **Cada prueba lleva el ID del requisito en su nombre**, por ejemplo `[FR-005] US2: lista ordenada…`.
-- Validación manual (smoke test) del servidor real para el flujo de punta a punta y la persistencia (FR-010).
-- Comandos: `npm test` y `npm run coverage`.
+## 8. Modelo de datos (subconjunto del diagrama 6)
 
-## 9. Riesgos
+**`auth-db` (dueño: `auth-svc`)**, entidades usadas en la iteración 1:
 
-| Riesgo                                   | Impacto                               | Mitigación                                                 |
-| ---------------------------------------- | ------------------------------------- | ----------------------------------------------------------- |
-| Escrituras concurrentes en el JSON       | Pérdida de datos con varios procesos | Un solo proceso y escritura atómica; BD en la iteración 2 |
-| Crecimiento del archivo                  | Lentitud                              | NFR-002 se mide en cada ejecución de pruebas               |
-| Enumeración o abuso con cuerpos grandes | Consumo de recursos                   | Límite de 10 KB (NFR-004)                                  |
-| Cobertura experimental de Node           | Métricas inestables                  | Versión de Node fijada (≥ 20)                             |
+| Entidad | Uso en la iteración 1 | Req. |
+|---|---|---|
+| `usuario` (`id`, `email` CITEXT UNIQUE, `nombre_completo`, `estado` ACTIVO/SUSPENDIDO/BLOQUEADO) | Identidad y estado de la cuenta | FR-001, FR-020 |
+| `credencial_password` (`hash` Argon2id, `cambiado_en`, `debe_cambiar`) | Primer factor y cambio de contraseña | FR-001, FR-023 |
+| `factor_totp` (`secreto_cifrado`, `key_id`, `ultimo_paso_usado`) | TOTP con anti-replay; secreto cifrado con AES-256-GCM | FR-005, FR-006 |
+| `rol`, `usuario_rol` | Roles para la aserción y el token | FR-007, FR-015 |
+| `sesion` | Registro auditable de sesiones (el estado real vive en Redis) | FR-017 |
+| `intento_autenticacion` (`factor` PASSWORD/TOTP, `resultado`, `ip`, `correlation_id`) | Bloqueos y auditoría | FR-020, FR-024 |
+| `estado_bloqueo` (`fallos_password`, `bloqueado_hasta`) | Bloqueo de cuenta | FR-020 |
+| `auditoria` (solo inserción) | Eventos con `correlation_id` | FR-024, FR-025 |
+
+Se dejan para la spec 002: `consentimiento_biometrico`, los contadores de rostro de `estado_bloqueo` y todo `bio-db`. Se dejan para la spec 005: `permiso` y `rol_permiso`.
+
+**`session-store` (Redis, dueño: `bff`)**
+
+| Clave | Valor | TTL |
+|---|---|---|
+| `presess:{sha256(presid)}` | `{usuario_ref, siguiente_factor:"TOTP", fallos_totp, creada_en}` | 300 s |
+| `sess:{sha256(sid)}` | `{usuario_id, roles, estado:"ACTIVA", amr, csrf_secret, creada_en, expira_absoluta}` | 900 s deslizante, con tope en `expira_absoluta` = 8 h |
+| `user_sessions:{usuario_id}` | conjunto de `sha256(sid)` | para revocación masiva (FR-023) |
+
+En Redis solo se guarda el **hash** del identificador de sesión: si se filtra el almacén, los valores no sirven como cookie.
+
+**`admin-db` (dueño: `admin-svc`):** tabla de ejemplo `aviso_administrativo` (`id`, `autor_id`, `texto`, `creado_en`) para demostrar la autorización por rol y por propiedad.
+
+## 9. Contratos de API
+
+**Públicos (vía `edge-proxy`):**
+
+| Método | Ruta | Cuerpo | Éxito | Errores | Req. |
+|---|---|---|---|---|---|
+| `POST` | `/bff/auth/password` | `{email, password}` | 200 `{siguiente_factor}` + `__Host-presid` | 401 genérico, 429 | FR-001 a FR-003 |
+| `POST` | `/bff/auth/totp` | `{code}` | 200 + `__Host-sid` | 401 | FR-005 a FR-008, FR-021 |
+| `GET` | `/bff/session` | — | 200 `{perfil, roles, csrfToken}` | 401 | FR-009 |
+| `POST` | `/bff/auth/logout` | — (CSRF) | 204 | 401, 403 | FR-017 |
+| `POST` | `/bff/auth/password/change` | `{actual, nueva}` (CSRF) | 204 | 400, 401, 403 | FR-023 |
+| `POST` | `/graphql` | operación GraphQL (CSRF) | 200 | 401, 403, 502 | FR-010 a FR-016 |
+
+**Internos (solo `net-app`):**
+
+| Servicio | Ruta | Llamador | Credencial |
+|---|---|---|---|
+| `bff` | `GET /internal/jwks.json` | backends | — (red interna; 404 desde el borde) |
+| `auth-svc` | `POST /auth/password`, `POST /auth/totp`, `POST /auth/password/change`, `POST /auth/sessions/revoked` | `bff` | JWT `aud=auth-svc` |
+| `admin-svc` | `POST /graphql` | `bff` | JWT `aud=admin-svc` |
+
+**Formato de error público:** `{ "error": "<mensaje genérico>", "requestId": "<X-Request-Id>" }`.
+
+---
+
+## 10. Despliegue (diagrama 10, recortado)
+
+| Red Docker | `internal` | Miembros |
+|---|---|---|
+| `net-edge` | No | `edge-proxy`, `static-shell`, `bff` |
+| `net-app` | **Sí** | `bff`, `session-store`, `auth-svc`, `admin-svc` |
+| `net-data` | **Sí** | `auth-svc` + `auth-db`, `admin-svc` + `admin-db` |
+| `net-egress` | No | `auth-svc` (SMTP; *stub* en la iteración 1) |
+
+| Servicio | Puertos publicados | Secrets | Endurecimiento |
+|---|---|---|---|
+| `edge-proxy` | **443**, 80 → 443 | certificados | usuario no root, `read_only` |
+| `bff` | — | `jwt_signing_key`, `redis_password` | arranque fallido si falta un secret |
+| `session-store` | — | `redis_password` | `requirepass`, sin persistencia |
+| `auth-svc` | — | `auth_db_password`, `totp_key` | `docs_url=None`, `DEBUG` off |
+| `admin-svc` | — | `admin_db_password` | introspección off |
+| `auth-db`, `admin-db` | — | contraseña | volúmenes `pg-auth` y `pg-admin` |
+
+Las dependencias de arranque usan `depends_on: condition: service_healthy`, y todos los servicios tienen *healthchecks*.
+
+---
+
+## 11. Decisiones (ADR) y alternativas descartadas
+
+| ADR | Decisión | Alternativas descartadas y por qué | Req. / Origen |
+|---|---|---|---|
+| ADR-01 | **Iniciar con la ruta TOTP** y dejar la biometría para la spec 002 | *Empezar por la biometría:* depende del go/no-go de S3 y bloquearía toda la arquitectura de sesión | D9, S3 |
+| ADR-02 | **Plan B de D7:** el `bff` enruta `/graphql` a un endpoint por módulo (`admin-svc`) | *Hive Gateway ya en la iteración 1:* agrega una incógnita (S1) a la iteración base. La seguridad no depende del router | D7, S1 |
+| ADR-03 | **Sesión pendiente separada** (`presess`) con su propia cookie `__Host-presid` | *Emitir `__Host-sid` con estado pendiente:* mezcla credenciales y facilita usar por error la pendiente como activa | FR-003, FR-004, #1 |
+| ADR-04 | **Aserción propietaria** de `auth-svc` al `bff` por la red interna (provisional) | *OIDC estándar:* más interoperable pero más complejo; se decide antes de S2 (Q1) | Q1 |
+| ADR-05 | **Hash Argon2id ficticio** cuando el correo no existe | *Responder antes:* el tiempo revelaría si la cuenta existe | FR-002, #13 |
+| ADR-06 | **Hash del `sid`** como clave en Redis | *Guardar el `sid` en claro:* si se filtra Redis, se pueden secuestrar sesiones | FR-007 |
+| ADR-07 | **Token sincronizador CSRF + verificación de `Origin` + exigir JSON** | *Solo `SameSite=Strict`:* no protege si hay subdominios comprometidos ni navegadores antiguos | FR-010, FR-011 |
+| ADR-08 | **Docker secrets y arranque fallido** si falta un secret | *Variables de entorno con valor por defecto:* es exactamente el hallazgo #5 | NFR-004, #5 |
+| ADR-09 | **ES256** con JWKS interno y `aud` único por servicio | *HS256 compartido:* cualquier backend podría falsificar tokens para otro. *Reenviar el token del usuario:* permite reutilización lateral | D5, FR-012 |
+| ADR-10 | **401 HTTP** (no 200 + `UNAUTHENTICATED`) para sesión inválida en `/graphql` | Convención GraphQL de 200: el interceptor no detectaría el fin de sesión de forma uniforme | FR-011, diagrama 4 |
+| ADR-11 | Secreto TOTP **cifrado con AES-256-GCM** (`key_id`) | *Guardarlo en claro:* una filtración de `auth-db` comprometería el segundo factor | FR-005, D12 |
+
+## 12. Estrategia de pruebas
+
+| Nivel | Servicio | Herramienta | Qué verifica |
+|---|---|---|---|
+| Unitarias | `auth-svc` | pytest | Argon2id, TOTP ±1 y anti-replay, contadores, respuesta uniforme |
+| Unitarias | `bff` | Jest | Emisor ES256 (claims), CSRF en tiempo constante, máquina de estados de la sesión, TTL |
+| Unitarias | `admin-svc` | Jest | Validación del token (alg, iss, aud, typ, exp, kid) y autorización |
+| Integración | `bff` + Redis | Jest + Supertest + Redis de prueba | Flujo password → totp → session → graphql → logout |
+| Integración | `auth-svc` + PostgreSQL | pytest + base temporal | Persistencia, bloqueo y cambio de contraseña |
+| Seguridad (negativas) | todos | Jest/pytest | `alg=none`, HS256, `aud` ajeno, token vencido, CSRF ausente, `Origin` ajeno, pendiente usada como activa |
+| E2E | topología completa | Playwright | 2 pestañas y `session:ended` (CA-13); ningún JWT en `document.cookie`, `localStorage` ni respuestas (SC-001) |
+| Infraestructura | compose | script `nmap`/`ss` | Solo 443/80 publicados (CA-18); `/internal/*` da 404 (CA-19) |
+| Rendimiento | `bff` | k6 / autocannon | NFR-008 (< 50 ms p95 de sobrecarga) |
+
+Cada prueba se nombra con el ID del requisito, por ejemplo `test('[FR-014] rechaza token con aud=auth-svc')`.
+
+## 13. Riesgos
+
+| Riesgo | Impacto | Mitigación |
+|---|---|---|
+| Error al configurar `__Host-` (exige `Secure` y `Path=/`, sin `Domain`) | Las cookies no se guardan | Prueba e2e sobre HTTPS con el TLS interno de Caddy |
+| Desfase de reloj entre servicios | Tokens rechazados | Tolerancia ≤ 30 s y NTP en el host |
+| Rotación de la clave ES256 | Rechazos durante la rotación | Publicar antes de firmar y refrescar por `kid` (§7) |
+| Redis caído | Pérdida de sesiones | Fallo cerrado (503); las sesiones son efímeras por diseño |
+| Fuerza bruta distribuida | Bloqueo de cuentas legítimas (DoS) | Rate limit en el borde + bloqueo con desbloqueo por un administrador; se revisa Q3 |
+| Incertidumbre de S1/S2 | Retrabajo en `/graphql` y el shell | El contrato `authFetch`/cookie no depende de esas decisiones |
+
+## 14. Trazabilidad con los diagramas de la arquitectura
+
+| Diagrama | Uso en esta iteración |
+|---|---|
+| 1. Contexto C4 | Actores y frontera; SMTP como *stub* |
+| 2. Contenedores C4 | §4 (subconjunto Z0, Z1, Z2 y Z4) |
+| 3. Secuencia del login biométrico | §5 (**variante TOTP**, pasos 1–9 y 24–28) |
+| 4. Propagación de sesión | §6 (subgrafo `admin-svc` en lugar de biblioteca) |
+| 5. DFD / STRIDE | Activos A1, A5, A6, A8 y A9; flujos F1–F6 y F11–F16 (ver la auditoría) |
+| 6. Modelo de datos | §8 (subconjunto de `auth-db`, Redis y metadatos de firma) |
+| 7. Enrolamiento biométrico | Fuera de alcance (spec 002) |
+| 8. Ciclo de vida de la sesión | Estados ANÓNIMO, PENDIENTE_TOTP, ACTIVA, EXPIRADA, REVOCADA y CUENTA_BLOQUEADA |
+| 9. Antes / después | Hallazgos #1, #5, #7, #8, #9, #11, #12, #13 y #14 cerrados por esta iteración |
+| 10. Despliegue | §10 (subconjunto de redes y servicios) |
 
 ---
 
 ## ✅ Puerta G2 — Checklist antes de aprobar el diseño
 
-- [X] Cubre todos los requisitos y cita sus IDs (§4, §5, §6 y §7).
-- [X] Respeta la constitución del proyecto (§3).
-- [X] Documenta las alternativas descartadas (§7).
-- [X] Incluye una estrategia de pruebas (§8).
-- [X] Identifica riesgos de seguridad, rendimiento y migraciones (§9).
+- [X] Cubre todos los requisitos y cita sus IDs (§4, §9, §11).
+- [X] Respeta la constitución (§3); el Principio VI no aplica en esta iteración.
+- [X] Documenta las alternativas descartadas (§11: 11 ADR).
+- [X] Incluye una estrategia de pruebas (§12).
+- [X] Identifica riesgos de seguridad, rendimiento y despliegue (§13).
 
-**Aprobado por:** Líder técnico, 2026-10-21.
+**Elaborado por:** Kleber Enrique Chávez Oscullo · **Aprobado por:** ____________________ (tutor), fecha: __________
+
 
 ---
 
-# Tareas: Gestión de Tareas Académicas (Iteración 1)
+# Tareas: Núcleo de Sesión Segura (Iteración 1)
 
 > **Fase SDD:** 3 – Descomponer en tareas | **Comando Spec Kit:** `/speckit-tasks`
+> **Autor:** Kleber Enrique Chávez Oscullo | **Rama:** `001-nucleo-sesion-segura` | **Fecha:** 2026-10-22 | **Estado:** ✅ Aprobado (puerta G3) · ⏳ Pendiente de implementación
 > **Entradas:** [`spec.md`](./02_Especificacion_speckit-specify.md) · [`plan.md`](./03_Planificacion_speckit-plan.md)
-> **Rama:** `001-gestion-tareas` | **Fecha:** 2026-10-21 | **Estado:** ✅ Aprobado (puerta G3) y completado
 
-**Formato:** `[ID] [P?] [Historia] Descripción → archivo` · *(requisitos)* · **Hecho cuando:** criterio verificable · **Depende de:**
+**Formato:** `[ID] [P?] [Historia] Descripción → ruta` · *(requisitos)* · **Hecho cuando:** · **Depende de:**
 
-- **[P]**: se puede hacer en paralelo (archivos distintos y sin dependencias pendientes).
-- Se implementa **una tarea a la vez**, con pruebas y revisión entre tareas (Constitución IV).
+- **[P]**: se puede hacer en paralelo (otro servicio u otros archivos, sin dependencias pendientes).
+- Las pruebas se escriben **antes** del código (rojo → verde). Cada prueba lleva el ID del requisito en su nombre.
+- **Un commit por tarea**, con su ID: `T014: emisor ES256 con aud por servicio`.
+- `[ ]` = pendiente (esta entrega cubre la documentación; el código no se ha ejecutado).
 
 ---
 
-## Fase 1: Preparación
+## Fase 1: Preparación del monorepo
 
-- [X] **T001** Crear la estructura de carpetas de `plan.md` §4.
-  **Hecho cuando:** existen `src/{domain,repository,services,http}`, `tests/` y `data/`.
-- [X] **T002** Crear `package.json` con los scripts `start`, `test` y `coverage`, sin dependencias. *(NFR-005)*
-  **Hecho cuando:** `npm test` se ejecuta (aunque todavía no haya pruebas). **Depende de:** T001
-- [X] **T003** [P] Redactar la constitución y `AGENTS.md`/`CLAUDE.md`.
-  **Hecho cuando:** pasaron la puerta G0.
+- [ ] **T001** Crear la estructura `services/{bff,auth-svc,admin-svc}`, `apps/shell`, `infra/edge-proxy`, `infra/secrets.example/` y `tests/e2e`.
+  **Hecho cuando:** la estructura coincide con `plan.md` §4.
+- [ ] **T002** [P] Inicializar `bff` y `admin-svc` (NestJS + TypeScript estricto + Jest), con versiones fijadas en el lockfile. *(Constitución IX)*
+  **Hecho cuando:** `npm test` corre en ambos (0 pruebas). **Depende de:** T001
+- [ ] **T003** [P] Inicializar `auth-svc` (FastAPI + pytest + `pyproject` con versiones fijadas), con `docs_url=None` cuando `ENV=production`. *(NFR-005)*
+  **Hecho cuando:** `pytest` corre y `/docs` responde 404 en producción. **Depende de:** T001
+- [ ] **T004** Crear `docker-compose.yml` con las redes `net-edge`, `net-app` (internal), `net-data` (internal) y `net-egress`, los secrets, los *healthchecks* y los servicios sin puertos salvo `edge-proxy`. *(NFR-003, NFR-004, D6)*
+  **Hecho cuando:** `docker compose config` es válido y `docker compose ps` muestra solo 443/80 publicados. **Depende de:** T002, T003
 
-## Fase 2: Fundamentos (bloquean todas las historias)
+## Fase 2: Fundamentos de seguridad (bloquean todas las historias)
 
-- [X] **T004** [P] Escribir las pruebas de dominio: validación, fechas, valores por defecto y transiciones → `tests/domain.test.js`. *(FR-001 a FR-004, FR-007, FR-008)*
-  **Hecho cuando:** las pruebas existen y fallan (rojo).
-- [X] **T005** Implementar la entidad Tarea → `src/domain/task.js`. *(FR-001, FR-002, FR-003, FR-007)*
-  **Hecho cuando:** pasan las 14 pruebas de T004. **Depende de:** T004
-- [X] **T006** [P] Implementar `TaskRepository` en memoria con copias defensivas → `src/repository/taskRepository.js`. *(ADR-05)*
-  **Hecho cuando:** los objetos devueltos no alteran el estado interno.
-- [X] **T007** Implementar el esqueleto HTTP: enrutador, `readJson` con límite de 10 KB y mapeo de errores → `src/http/app.js`. *(FR-004, FR-012, NFR-001, NFR-004)*
-  **Hecho cuando:** `GET /health` responde 200 con `nosniff`.
-- [X] **T008** Crear el punto de arranque con `PORT` y `DATA_FILE` → `src/server.js`.
-  **Hecho cuando:** `npm start` muestra "TaskFlow API escuchando…". **Depende de:** T006, T007
+- [ ] **T005** [P] Escribir pruebas del lector de secrets: si falta un secret, el servicio aborta el arranque (`bff`, `auth-svc`, `admin-svc`). *(NFR-004, #5)*
+  **Hecho cuando:** las pruebas `[NFR-004]` existen y fallan.
+- [ ] **T006** Implementar el lector de secrets (`/run/secrets/*`) sin valores por defecto en los tres servicios. *(NFR-004)*
+  **Hecho cuando:** T005 está en verde. **Depende de:** T005
+- [ ] **T007** [P] Modelo de `auth-db` con SQLAlchemy y migraciones: `usuario`, `credencial_password`, `factor_totp`, `rol`, `usuario_rol`, `sesion`, `intento_autenticacion`, `estado_bloqueo` y `auditoria`. *(plan §8)*
+  **Hecho cuando:** la migración se aplica y se revierte sin errores en PostgreSQL. **Depende de:** T003
+- [ ] **T008** [P] Pruebas del emisor de tokens del `bff`: ES256, `typ=at+jwt`, `aud` único, `exp − iat ≤ 300`, `jti` y `kid`. *(FR-012)*
+  **Hecho cuando:** las pruebas `[FR-012]` existen y fallan.
+- [ ] **T009** Implementar `TokenIssuer` (con `jose`) y el endpoint `GET /internal/jwks.json` con rotación por `kid`. *(FR-012, FR-013, ADR-09)*
+  **Hecho cuando:** T008 está en verde y el JWKS publica la clave activa. **Depende de:** T006, T008
+- [ ] **T010** [P] Pruebas de la librería de validación de tokens para los backends: `alg=none`, HS256, `aud` ajeno, `iss` ajeno, vencido, `kid` desconocido → refresco. *(FR-014)*
+  **Hecho cuando:** las pruebas `[FR-014]` existen y fallan (en TypeScript para `admin-svc` y en Python para `auth-svc`).
+- [ ] **T011** Implementar el validador de tokens en `admin-svc` (guard de NestJS) y en `auth-svc` (dependencia de FastAPI), con fallo cerrado. *(FR-014)*
+  **Hecho cuando:** T010 está en verde en ambos lenguajes. **Depende de:** T009, T010
+- [ ] **T012** [P] `SessionStore` del `bff` sobre Redis: claves con hash SHA-256 del id, `presess`, `sess` y `user_sessions`, TTL deslizante con tope absoluto, más sus pruebas. *(FR-003, FR-019, ADR-06)*
+  **Hecho cuando:** las pruebas `[FR-019]` de TTL (15 min / 8 h) están en verde con un reloj simulado. **Depende de:** T002
+- [ ] **T013** Configurar `edge-proxy` (Caddyfile): TLS interno, HSTS, CSP, `nosniff`, `Referrer-Policy`, `Permissions-Policy: camera=(self)`, `X-Request-Id`, límite de cuerpo, enrutamiento `/`, `/bff/*` y `/graphql`, y `respond /internal/* 404`. *(NFR-001, NFR-002, FR-013, FR-024)*
+  **Hecho cuando:** `curl -I https://localhost` muestra las cabeceras y `/internal/jwks.json` da 404. **Depende de:** T004
 
-**Checkpoint G4-a:** los fundamentos fueron revisados y las historias pueden comenzar.
+**Checkpoint G4-a:** los fundamentos fueron revisados (secrets, tokens, sesión y borde).
 
-## Fase 3: US1 – Registrar tarea (P1) 🎯 MVP
+## Fase 3: US1 – Primer factor (P1) 🎯
 
-- [X] **T009** [P] [US1] Prueba de servicio para crear y recuperar → `tests/service.test.js`. *(FR-001, FR-002)*
-  **Hecho cuando:** la prueba existe y falla (rojo).
-- [X] **T010** [P] [US1] Pruebas de API para `POST /tasks`: 201, 400 con detalles, JSON mal formado y cuerpo vacío → `tests/api.test.js`. *(FR-004)*
-  **Hecho cuando:** las pruebas cubren CA-01 a CA-04.
-- [X] **T011** [US1] Implementar `TaskService.create()`. *(FR-001 a FR-004)*
-  **Hecho cuando:** T009 está en verde. **Depende de:** T005, T006
-- [X] **T012** [US1] Agregar la ruta `POST /tasks`.
-  **Hecho cuando:** T010 está en verde. **Depende de:** T007, T011
+- [ ] **T014** [P] [US1] Pruebas de `auth-svc` `POST /auth/password`: Argon2id correcto, incorrecto, usuario inexistente (hash ficticio) y cuenta bloqueada, con **respuestas idénticas**. *(FR-001, FR-002)*
+  **Hecho cuando:** las pruebas cubren CA-01 y CA-02 (incluido el tiempo: diferencia < 50 ms).
+- [ ] **T015** [US1] Implementar `/auth/password` en `auth-svc`: registro de `intento_autenticacion` y respuesta `{user_ref, siguiente_factor:"TOTP"}`. *(FR-001, FR-002, ADR-05)*
+  **Hecho cuando:** T014 está en verde. **Depende de:** T007, T011, T014
+- [ ] **T016** [US1] Implementar `bff` `POST /bff/auth/password`: llama a `auth-svc` con `aud=auth-svc`, crea `presess` (300 s) y entrega `__Host-presid` (HttpOnly, Secure, SameSite=Strict, Path=/, Max-Age=300) **sin ningún token**. *(FR-003, ADR-03)*
+  **Hecho cuando:** una prueba de integración verifica las cookies y que el cuerpo no contiene un JWT (CA-01). **Depende de:** T009, T012, T015
+- [ ] **T017** [US1] Guard del `bff` que rechaza con 401 una sesión pendiente en `/graphql` y `/bff/session`. *(FR-004)*
+  **Hecho cuando:** la prueba `[FR-004]` cubre CA-03. **Depende de:** T016
 
-## Fase 4: US2 – Consultar (P1) 🎯 MVP
+## Fase 4: US2 – Segundo factor TOTP (P1) 🎯
 
-- [X] **T013** [P] [US2] Pruebas de orden por fecha y prioridad, filtros sin distinguir mayúsculas y filtros inválidos. *(FR-005, FR-006)*
-  **Hecho cuando:** cubren CA-05 a CA-08.
-- [X] **T014** [US2] Implementar `list(filters)` y `get(id)` con `NotFoundError`. *(FR-005, FR-006, FR-011)*
-  **Hecho cuando:** T013 está en verde. **Depende de:** T011
-- [X] **T015** [US2] Agregar las rutas `GET /tasks` y `GET /tasks/:id`.
-  **Hecho cuando:** las pruebas de API de listado y 404 están en verde. **Depende de:** T014
+- [ ] **T018** [P] [US2] Pruebas de `auth-svc` `POST /auth/totp`: ventana ±1, anti-replay (`ultimo_paso_usado` atómico) y secreto descifrado con AES-GCM. *(FR-005, FR-006, ADR-11)*
+  **Hecho cuando:** las pruebas cubren CA-05, incluido el caso de dos peticiones simultáneas con el mismo código.
+- [ ] **T019** [US2] Implementar `/auth/totp` en `auth-svc`, que devuelve la aserción `{sub, roles, amr:["pwd","otp"], auth_time}`. *(FR-005, FR-006, ADR-04)*
+  **Hecho cuando:** T018 está en verde. **Depende de:** T015, T018
+- [ ] **T020** [US2] Implementar `bff` `POST /bff/auth/totp`: valida la `presess`, cuenta los fallos (al 5.º la elimina), **regenera el id**, crea `sess` con `csrf_secret` y emite `__Host-sid` mientras expira `__Host-presid`. *(FR-007, FR-008, FR-021)*
+  **Hecho cuando:** las pruebas cubren CA-04, CA-06 y CA-15. **Depende de:** T017, T019
+- [ ] **T021** [US2] Implementar `bff` `GET /bff/session` → `{perfil, roles, csrfToken}`. *(FR-009)*
+  **Hecho cuando:** la prueba `[FR-009]` comprueba que no hay un JWT en el cuerpo (CA-07). **Depende de:** T020
 
-## Fase 5: US3 – Editar y cambiar estado (P2)
+## Fase 5: US3 – Propagación de sesión (P1) 🎯
 
-- [X] **T016** [P] [US3] Pruebas de edición parcial, edición inválida y transiciones (incluido el 409). *(FR-007, FR-008)*
-  **Hecho cuando:** cubren CA-09 a CA-12.
-- [X] **T017** [US3] Implementar `update()`, que no permite cambiar `status`. *(FR-008)*
-  **Hecho cuando:** las pruebas de edición están en verde. **Depende de:** T014
-- [X] **T018** [US3] Implementar `changeStatus()` con `TransitionError`. *(FR-007)*
-  **Hecho cuando:** la prueba del 409 está en verde. **Depende de:** T014
-- [X] **T019** [US3] Agregar las rutas `PATCH /tasks/:id` y `PATCH /tasks/:id/status`.
-  **Hecho cuando:** el flujo de API de edición y estado está en verde. **Depende de:** T017, T018
+- [ ] **T022** [P] [US3] Pruebas de `bff` `/graphql`: método, `Content-Type`, `Origin`, sesión y CSRF en orden; 401 frente a 403; el subgrafo no recibe la llamada si algo falla. *(FR-010, FR-011)*
+  **Hecho cuando:** cubren CA-08.
+- [ ] **T023** [US3] Implementar el pipeline de `/graphql` en el `bff` (plan B: proxy a `admin-svc`) con el token `aud=admin-svc` y `X-Request-Id`; 502 genérico si el subgrafo rechaza el token. *(FR-010 a FR-012, FR-016, ADR-02, ADR-07, ADR-10)*
+  **Hecho cuando:** T022 está en verde y las pruebas verifican los claims recibidos por un subgrafo simulado (CA-09) y el 502 sin reintento (CA-22). **Depende de:** T009, T021, T022
+- [ ] **T024** [US3] Implementar `admin-svc`: schema `me` y `panelAdmin`, y el *resolver* de `aviso_administrativo` con autorización por rol y propiedad (`FORBIDDEN`); introspección desactivada en producción. *(FR-015, NFR-005)*
+  **Hecho cuando:** las pruebas cubren CA-10, CA-11 y CA-12. **Depende de:** T011
 
-## Fase 6: US4 – Eliminar (P3)
+## Fase 6: US4 – Cierre de sesión y expiración (P2)
 
-- [X] **T020** [P] [US4] Pruebas de eliminar (204) y de eliminar una tarea inexistente (404). *(FR-009, FR-011)*
-  **Hecho cuando:** cubren CA-13 y CA-14.
-- [X] **T021** [US4] Implementar `remove()` y la ruta `DELETE /tasks/:id`. *(FR-009)*
-  **Hecho cuando:** T020 está en verde. **Depende de:** T014
+- [ ] **T025** [US4] Implementar `bff` `POST /bff/auth/logout` (con CSRF): borra `sess`, notifica `revocada_en`/`motivo_revocacion` a `auth-svc` y expira la cookie. *(FR-017)*
+  **Hecho cuando:** después del logout, la cookie anterior recibe 401. **Depende de:** T023
+- [ ] **T026** [P] [US4] Implementar el shell mínimo: `authFetch`, contrato `getCsrfToken()`, `BroadcastChannel('auth')` con `session:started` y `session:ended`, y redirección a `/sso` ante un 401. *(FR-018, D3, D4)*
+  **Hecho cuando:** el e2e de 2 pestañas (CA-13) está en verde. **Depende de:** T021
+- [ ] **T027** [US4] Verificar la expiración por inactividad y la absoluta de punta a punta (reloj simulado en la prueba de integración). *(FR-019)*
+  **Hecho cuando:** CA-14 está en verde. **Depende de:** T012, T023
 
-## Fase 7: Persistencia, seguridad y validación
+## Fase 7: US5 – Fuerza bruta (P2)
 
-- [X] **T022** Persistencia JSON atómica que tolera un archivo vacío, más sus pruebas. *(FR-010, ADR-02)*
-  **Hecho cuando:** los datos sobreviven a una nueva instancia del repositorio (CA-15).
-- [X] **T023** [P] Pruebas de seguridad y errores generales: 413, 500 genérico, `nosniff`, 404/405. *(NFR-004, FR-012)*
-  **Hecho cuando:** las pruebas están en verde y ningún 500 expone detalles.
-- [X] **T024** [P] Prueba automatizada de rendimiento con 1 000 tareas. *(NFR-002)*
-  **Hecho cuando:** p95 < 200 ms.
-- [X] **T025** Ejecutar `npm run coverage` y verificar los umbrales. *(NFR-003)*
-  **Hecho cuando:** líneas ≥ 90 %, ramas ≥ 85 % y funciones ≥ 90 %.
-- [X] **T026** Validación manual (smoke test), README, reporte de implementación y auditoría.
-  **Hecho cuando:** la checklist de cierre está completa y el estado es CONVERGED (puerta G5).
+- [ ] **T028** [US5] Contadores de `fallos_password` y transición a `BLOQUEADO` al alcanzar el umbral de Q3; notificación por el *stub* de SMTP. *(FR-020)*
+  **Hecho cuando:** la prueba `[FR-020]` cubre CA-20 (cuenta `BLOQUEADO` y respuesta genérica). **Depende de:** T015
+- [ ] **T029** [P] [US5] Rate limiting por IP en `/bff/auth/*` dentro de `edge-proxy`. *(FR-022)*
+  **Hecho cuando:** CA-21 está en verde (una ráfaga que supera el límite recibe 429). **Depende de:** T013
+
+## Fase 8: US6 – Cambio de contraseña (P3)
+
+- [ ] **T030** [US6] `auth-svc` `/auth/password/change` + `bff` `/bff/auth/password/change`: exige la contraseña actual, guarda un hash Argon2id nuevo y **revoca todas** las sesiones mediante `user_sessions:{id}`. *(FR-023, #7)*
+  **Hecho cuando:** CA-16 está en verde. **Depende de:** T020, T025
+
+## Fase 9: US7 – Auditoría (P3)
+
+- [ ] **T031** [US7] Propagar `X-Request-Id` en los tres servicios, escribir la auditoría en `auditoria` e `intento_autenticacion`, y aplicar un filtro de logs que censura `password`, `code`, `cookie`, `authorization` y `token`. *(FR-024, FR-025, NFR-006)*
+  **Hecho cuando:** la prueba `[FR-025]` captura los logs de un flujo completo, no encuentra datos sensibles y sí encuentra el `correlation_id` (CA-17). **Depende de:** T023, T030
+
+## Fase 10: Validación y cierre
+
+- [ ] **T032** [P] E2E con Playwright sobre `docker compose`: flujo completo; ningún JWT en `document.cookie`, `localStorage` ni respuestas (SC-001); 2 pestañas (CA-13).
+  **Hecho cuando:** la suite e2e está en verde. **Depende de:** T026, T030
+- [ ] **T033** [P] Verificación de infraestructura: escaneo de puertos (CA-18), `/internal/*` da 404 (CA-19) y medición de NFR-008 con autocannon.
+  **Hecho cuando:** solo 443/80 están abiertos y p95 < 50 ms. **Depende de:** T013, T023
+- [ ] **T034** Cobertura por servicio (Constitución X), reporte de implementación y auditoría de convergencia.
+  **Hecho cuando:** se cumplen los umbrales y la auditoría indica CONVERGED (puerta G5). **Depende de:** T031, T032, T033
 
 ---
 
 ## Dependencias
 
 ```
-T001 ─► T002 ─► T004 ─► T005 ─┬─► T011 ─► T012
-               T006 ──────────┤      │
-               T007 ─► T008   │      ▼
-                              │    T014 ─┬─► T015
-                              │          ├─► T017 ─┐
-                              │          ├─► T018 ─┴─► T019
-                              │          └─► T021
-                              └─► T022 ─► T023, T024 ─► T025 ─► T026
+T001 ─► T002 ─┬─► T012 ───────────────────────────────┐
+      └► T003 ─┼─► T007 ─────┐                         │
+               └─► T004 ─► T013 ─► T029                │
+T005 ─► T006 ─► T009 ◄─ T008                           │
+T010 ─────────► T011 ◄─ T009                           │
+T014 ─► T015 ◄─ T007,T011 ─► T016 ◄─ T009,T012 ────────┘
+                  │            └─► T017
+T018 ─► T019 ◄────┘                 │
+          └──────────────► T020 ◄───┘ ─► T021 ─┬─► T023 ◄─ T022 ─► T025 ─► T030 ─► T031
+                                               └─► T026            T027        │
+T011 ─► T024                                                                   ▼
+                                                       T032, T033 ─────────► T034
 ```
 
-US3 y US4 dependen de US2 (`get`) y pueden avanzar en paralelo entre sí.
+## Matriz requisito → tarea
 
-## Matriz de cobertura: requisito → tarea
-
-| Requisito              | Tareas                 |
-| ---------------------- | ---------------------- |
-| FR-001, FR-002, FR-003 | T004, T005, T009, T011 |
-| FR-004                 | T004, T007, T010, T011 |
-| FR-005, FR-006         | T013, T014, T015       |
-| FR-007                 | T004, T016, T018, T019 |
-| FR-008                 | T016, T017, T019       |
-| FR-009                 | T020, T021             |
-| FR-010                 | T022                   |
-| FR-011                 | T014, T020             |
-| FR-012                 | T007, T023             |
-| NFR-001, NFR-004       | T007, T023             |
-| NFR-002                | T024                   |
-| NFR-003                | T025                   |
-| NFR-005                | T002                   |
+| Requisito | Tareas | Requisito | Tareas |
+|---|---|---|---|
+| FR-001, FR-002 | T014, T015 | FR-017 | T025 |
+| FR-003 | T012, T016 | FR-018 | T026, T032 |
+| FR-004 | T017 | FR-019 | T012, T027 |
+| FR-005, FR-006 | T018, T019 | FR-020 | T028 |
+| FR-007, FR-008 | T020 | FR-021 | T020 |
+| FR-009 | T021 | FR-022 | T029 |
+| FR-010, FR-011 | T022, T023 | FR-023 | T030 |
+| FR-012 | T008, T009, T023 | FR-024, FR-025 | T031 |
+| FR-013 | T009, T013, T033 | NFR-001, NFR-002 | T013 |
+| FR-014 | T010, T011, T024 | NFR-003 | T004, T033 |
+| FR-015 | T024 | NFR-004 | T005, T006 |
+| FR-016 | T023 | NFR-005 | T003, T024 |
+| | | NFR-006 | T031 |
+| | | NFR-007 | T004, T007 |
+| | | NFR-008 | T033 |
+| | | NFR-009 | T034 |
 
 ## Resumen
 
-| Fase                                  | Tareas       | Completadas          |
-| ------------------------------------- | ------------ | -------------------- |
-| Preparación                          | 3            | 3                    |
-| Fundamentos                           | 5            | 5                    |
-| US1                                   | 4            | 4                    |
-| US2                                   | 3            | 3                    |
-| US3                                   | 4            | 4                    |
-| US4                                   | 2            | 2                    |
-| Persistencia, seguridad y validación | 5            | 5                    |
-| **Total**                       | **26** | **26 (100 %)** |
+| Fase | Tareas | Historias |
+|---|---|---|
+| 1. Preparación | 4 | — |
+| 2. Fundamentos de seguridad | 9 | — |
+| 3. Primer factor | 4 | US1 |
+| 4. Segundo factor TOTP | 4 | US2 |
+| 5. Propagación de sesión | 3 | US3 |
+| 6. Cierre y expiración | 3 | US4 |
+| 7. Fuerza bruta | 2 | US5 |
+| 8. Cambio de contraseña | 1 | US6 |
+| 9. Auditoría | 1 | US7 |
+| 10. Validación y cierre | 3 | — |
+| **Total** | **34** | **7 historias** |
 
 ---
 
 ## ✅ Puerta G3 — Checklist antes de aprobar las tareas
 
-- [X] Cada tarea es pequeña y se revisa en minutos.
+- [X] Cada tarea es pequeña y se revisa en minutos (un servicio y un concepto por tarea).
 - [X] Cada tarea tiene su "Hecho cuando…".
-- [X] Cada tarea referencia requisitos.
-- [X] Las dependencias están marcadas.
-- [X] Todos los requisitos están cubiertos por alguna tarea (ver la matriz).
+- [X] Cada tarea referencia requisitos o un ADR.
+- [X] Las dependencias están marcadas (grafo y "Depende de").
+- [X] Todos los requisitos (25 FR y 9 NFR) están cubiertos por alguna tarea (matriz).
 
-**Aprobado por:** Líder técnico, 2026-10-21.
+**Elaborado por:** Kleber Enrique Chávez Oscullo · **Aprobado por:** ____________________ (tutor), fecha: __________
+
 
 ---
 
-# Reporte de Implementación – Iteración 1
+# Implementación de la Iteración 1: Guía de Ejecución
 
 > **Fase SDD:** 4 – Implementar | **Comando Spec Kit:** `/speckit-implement`
-> **Rama:** `001-gestion-tareas` | **Fecha:** 2026-10-21 / 2026-10-22
-> **Entradas:** [`tasks.md`](./04_Tareas_speckit-tasks.md) · [`plan.md`](./03_Planificacion_speckit-plan.md) · [`constitution.md`](./01_Constitucion_speckit-constitution.md) · [`AGENTS.md`](https://github.com/kechavez07/GestionSDD/blob/main/AGENTS.md)
+> **Autor:** Kleber Enrique Chávez Oscullo | **Rama:** `001-nucleo-sesion-segura` | **Fecha:** 2026-10-22
+> **Entradas:** [`tasks.md`](./04_Tareas_speckit-tasks.md) · [`plan.md`](./03_Planificacion_speckit-plan.md) · [`spec.md`](./02_Especificacion_speckit-specify.md) · [`constitution.md`](./01_Constitucion_speckit-constitution.md) · [`AGENTS.md`](https://github.com/kechavez07/GestionSDD/blob/main/AGENTS.md)
+
+> ⚠️ **Estado: PLANIFICADA, NO EJECUTADA.** Este documento define **cómo** se ejecuta la iteración 1 con un agente de IA bajo SDD: el orden, los prompts, los artefactos esperados y la verificación de cada tarea. En esta entrega **todavía no existe código**; la bitácora (§7) queda lista para registrar la ejecución.
 
 ---
 
-## 1. Resumen
+## 1. Alcance de la iteración
 
-El agente ejecutó las **26 tareas** de `tasks.md` **una a la vez**, en el orden de dependencias (Preparación → Fundamentos → US1 → US2 → US3 → US4 → Persistencia, seguridad y validación), con el ciclo **Rojo → Verde → Refactor** que exige la Constitución.
+| Se construye | Se deja para después |
+|---|---|
+| `edge-proxy` (Caddy), `shell` mínimo, `bff` (NestJS), `session-store` (Redis), `auth-svc` (FastAPI), `auth-db`, `admin-svc` (NestJS), `admin-db` | `bio-svc` y biometría (002), MFE reales (003), Hive Gateway y subgrafos académico/biblioteca (004), administración (005) |
 
-| Métrica                                     | Valor                                    |
-| -------------------------------------------- | ---------------------------------------- |
-| Tareas completadas                           | 26 / 26 (100 %)                          |
-| Código fuente (`src/`)                    | 5 archivos, 399 líneas                  |
-| Pruebas (`tests/`)                         | 3 archivos, 352 líneas                  |
-| Pruebas automatizadas                        | **36 pasan / 0 fallan** (8 suites) |
-| Pruebas con el ID del requisito en el nombre | 36 / 36                                  |
-| Dependencias externas                        | 0                                        |
-| Endpoints                                    | 7 (6 de negocio + `/health`)           |
+**Resultado esperado:** un usuario inicia sesión con contraseña + TOTP, recibe solo una cookie opaca, consulta `admin-svc` a través del `bff` con un token interno ES256 `aud=admin-svc`, y cierra sesión en todas sus pestañas.
 
-## 2. Cómo se le pidió el trabajo al agente
+## 2. Reglas de ejecución (tomadas de la Constitución)
 
-Cada tarea se pidió con el prompt de `AGENTS.md`, por ejemplo:
+1. **Una tarea a la vez**, en el orden del grafo de `tasks.md`. Las tareas `[P]` pueden ir en paralelo en ramas distintas.
+2. **Rojo → Verde → Refactor:** primero la prueba con el ID del requisito en su nombre, luego el código mínimo, luego la limpieza.
+3. **Un commit por tarea:** `T0xx: <descripción>`.
+4. Si algo **contradice la spec** o es ambiguo, el agente **se detiene y pregunta**. Si el comportamiento cambia, **se edita primero la spec** y se registra en §8.
+5. Después de cada tarea: pruebas del servicio en verde, la tarea marcada `[X]` en `tasks.md` y una entrada en la bitácora (§7).
+
+## 3. Prompt tipo para el agente
 
 ```text
-Lee constitution.md, spec.md y plan.md de specs/001-gestion-tareas/.
-Implementa SOLO la tarea T018 de tasks.md.
-No modifiques otros archivos fuera de lo que T018 requiere.
-Al terminar, ejecuta los tests y marca T018 como completada.
-Si encuentras algo que contradice la spec, detente y pregúntame.
+Lee .specify/memory/constitution.md y specs/001-nucleo-sesion-segura/{spec,plan,tasks}.md.
+Implementa SOLO la tarea T016 de tasks.md.
+- Escribe primero las pruebas, nombradas con el ID del requisito (p. ej. "[FR-003] …").
+- No modifiques archivos fuera de lo que T016 requiere.
+- No emitas ningún token al navegador (Constitución II).
+Al terminar: ejecuta las pruebas del servicio, marca T016 como [X] y haz commit "T016: …".
+Si algo contradice la spec, detente y pregúntame.
 ```
 
-## 3. Archivos producidos (trazabilidad)
-
-| Archivo                              | Capa          | Tareas                       | Requisitos                                                |
-| ------------------------------------ | ------------- | ---------------------------- | --------------------------------------------------------- |
-| `src/domain/task.js`               | Dominio       | T005                         | FR-001, FR-002, FR-003, FR-004, FR-007, FR-008            |
-| `src/repository/taskRepository.js` | Persistencia  | T006, T022                   | FR-010                                                    |
-| `src/services/taskService.js`      | Servicios     | T011, T014, T017, T018, T021 | FR-005 a FR-009, FR-011                                   |
-| `src/http/app.js`                  | HTTP          | T007, T012, T015, T019, T021 | FR-004, FR-012, NFR-001, NFR-004                          |
-| `src/server.js`                    | Arranque      | T008                         | Constitución V                                           |
-| `tests/domain.test.js`             | Pruebas (14)  | T004                         | FR-001 a FR-004, FR-007, FR-008                           |
-| `tests/service.test.js`            | Pruebas (11)  | T009, T013, T016, T020, T022 | FR-001, FR-002, FR-004 a FR-011                           |
-| `tests/api.test.js`                | Pruebas (11)  | T010, T016, T020, T023, T024 | FR-004, FR-006, FR-007, FR-012, NFR-001, NFR-002, NFR-004 |
-| `AGENTS.md`, `CLAUDE.md`         | Instrucciones | T003                         | Constitución §5                                         |
-
-## 4. Bitácora por fase
-
-| Fase                                     | Resultado | Notas                                                                                                    |
-| ---------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| 1. Preparación                          | ✅        | Estructura, `package.json` y constitución                                                             |
-| 2. Fundamentos                           | ✅        | `isValidDate` rechaza fechas que no existen (`2026-02-30`). El repositorio devuelve copias (ADR-05). |
-| 3. US1 Registrar                         | ✅        | 201 con UUID, `pendiente` y `media` por defecto. Los datos inválidos dan 400 con `details[]`.     |
-| 4. US2 Consultar                         | ✅        | Orden por `dueDate` y luego por el peso de la prioridad. Filtro de materia sin distinguir mayúsculas. |
-| 5. US3 Editar/estado                     | ✅        | Endpoint de estado separado (ADR-03). Salir de `completada` da 409.                                    |
-| 6. US4 Eliminar                          | ✅        | 204, o 404 si la tarea no existe.                                                                        |
-| 7. Persistencia, seguridad y validación | ✅        | JSON atómico, 413, 500 genérico, rendimiento y smoke test.                                             |
-
-## 5. Verificación iterativa: lo que se descubrió al implementar
-
-La guía SDD dice: *"si se descubrió algo nuevo durante la implementación → **se actualiza la spec**, no solo el código"*. Así se aplicó:
-
-| # | Descubrimiento                                                                                                                 | Detectado por                                       | Cambio en el código                              | Cambio en la spec/plan                     |
-| - | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------- | ------------------------------------------ |
-| 1 | Con un cuerpo > 10 KB, `req.destroy()` cortaba la conexión y el cliente veía *"fetch failed"* en lugar de 413.           | Prueba `[NFR-004] 413…` en **rojo**        | Se descarta el resto del cuerpo y se responde 413 | Se agregó **ADR-06** en `plan.md` |
-| 2 | Había una rama muerta en `update()` (`typeof … === 'string'`), con cobertura de ramas de 97,37 %.                        | `npm run coverage`                                | Se simplificó a `.trim()`                      | — (refactor sin cambio de comportamiento) |
-| 3 | Las respuestas 404/405 a rutas y métodos desconocidos estaban implementadas pero **no especificadas** (*spec drift*). | Revisión de trazabilidad                           | —                                                | Se agregó **FR-012** a `spec.md`  |
-| 4 | NFR-002 (rendimiento) solo se había medido a mano.                                                                            | Revisión contra la guía (requisitos verificables) | Se agregó la prueba automatizada `[NFR-002]`   | Se agregó la tarea **T024**         |
-| 5 | El script `node --test tests/` falla en Node 22, que espera un archivo y no una carpeta.                                     | Primera ejecución                                  | Se cambió al patrón `"tests/**/*.test.js"`    | —                                         |
-
-## 6. Evidencia
-
-### Pruebas
+## 4. Estructura de código esperada
 
 ```
-$ npm test
-# tests 36
-# suites 8
-# pass 36
-# fail 0
+plataforma-sso-sdd/
+├── docker-compose.yml
+├── infra/
+│   ├── edge-proxy/Caddyfile
+│   └── secrets.example/            # nombres de los secrets; nunca valores reales
+├── apps/shell/                     # shell mínimo: authFetch + BroadcastChannel
+├── services/
+│   ├── bff/                        # NestJS
+│   │   └── src/{auth,session,csrf,token,graphql-proxy,jwks,config}/
+│   ├── auth-svc/                   # FastAPI
+│   │   └── app/{routers,domain,security,db,audit}/
+│   └── admin-svc/                  # NestJS (subgrafo)
+│       └── src/{auth-guard,schema,resolvers,db}/
+└── tests/e2e/                      # Playwright
 ```
 
-Extracto con la trazabilidad en los nombres:
+## 5. Plan de ejecución por fase
 
-```
-ok - [FR-005] US2: lista ordenada por fecha de entrega y prioridad
-ok - [FR-007] 409 ante transición de estado no permitida
-ok - [FR-010] persiste y recarga tareas desde disco
-ok - [NFR-002] lista 1 000 tareas filtradas en < 200 ms (p95)
-ok - [NFR-004] 500 genérico sin filtrar detalles internos
-```
+| Fase | Tareas | Entregable verificable | Comando de verificación |
+|---|---|---|---|
+| 1. Preparación | T001–T004 | Monorepo y compose válido | `docker compose config` · `docker compose ps` |
+| 2. Fundamentos | T005–T013 | Secrets obligatorios, emisor y validador ES256, SessionStore, Caddy | `npm test` (bff, admin-svc) · `pytest` (auth-svc) · `curl -I https://localhost` |
+| 3. US1 | T014–T017 | Login con contraseña → sesión pendiente | `pytest -k FR-00` · `npm test -- -t "FR-003"` |
+| 4. US2 | T018–T021 | TOTP → sesión activa, `/bff/session` | `npm test -- -t "FR-007"` |
+| 5. US3 | T022–T024 | `/graphql` → `admin-svc` con un token validado | `npm test -- -t "FR-01"` |
+| 6. US4 | T025–T027 | Logout y expiración; shell con `BroadcastChannel` | `npx playwright test logout` |
+| 7. US5 | T028–T029 | Bloqueo de cuenta y rate limit | `pytest -k FR-020` · ráfaga → 429 |
+| 8. US6 | T030 | Cambio de contraseña con revocación total | `npm test -- -t "FR-023"` |
+| 9. US7 | T031 | Auditoría con `correlation_id` y logs censurados | `pytest -k FR-025` |
+| 10. Cierre | T032–T034 | E2E, puertos, rendimiento, cobertura y auditoría | `npx playwright test` · `nmap -p- localhost` · `autocannon` |
 
-### Validación manual del servidor real
+## 6. Verificación por historia de usuario (demostración manual)
 
-```
-$ PORT=3917 node src/server.js
-TaskFlow API escuchando en http://localhost:3917
+| Historia | Pasos de demostración | Resultado esperado |
+|---|---|---|
+| US1 | Iniciar sesión con contraseña en `https://localhost/sso` y revisar DevTools → Application | Solo existe la cookie `__Host-presid` (HttpOnly). No hay nada en `localStorage`. |
+| US2 | Ingresar el código de la app autenticadora | `__Host-presid` desaparece y aparece `__Host-sid` con otro valor |
+| US3 | Pulsar "Consultar panel" | Los datos se muestran. En los logs de `admin-svc` aparece `aud=admin-svc`; en el navegador no aparece ningún JWT. |
+| US3 (negativo) | Repetir la petición con `curl` sin `X-CSRF-Token` | 403; `admin-svc` no registra ninguna llamada |
+| US4 | Abrir 2 pestañas y cerrar sesión en una | La otra pestaña redirige a `/sso` |
+| US5 | Fallar la contraseña hasta el umbral | La cuenta queda `BLOQUEADO`, la respuesta sigue siendo genérica y el *stub* de SMTP registra la notificación |
+| US6 | Cambiar la contraseña con 2 sesiones abiertas | Ambas sesiones reciben 401 |
+| US7 | Revisar los logs de un flujo completo | Hay `correlation_id` en los tres servicios; no aparecen la contraseña, el código, la cookie ni el token |
 
-$ curl -X POST localhost:3917/tasks -H "Content-Type: application/json" \
-    -d '{"title":"Entregar SDD","subject":"Gestión","dueDate":"2026-10-28","priority":"alta"}'
-{"id":"6d91c2c2-3658-4421-8884-0f01ccc878b0","title":"Entregar SDD","description":"",
- "subject":"Gestión","dueDate":"2026-10-28","priority":"alta","status":"pendiente",
- "createdAt":"2026-10-22T04:30:31.177Z","updatedAt":"2026-10-22T04:30:31.177Z"}
-```
+## 7. Bitácora de ejecución
 
-Se comprobó que `data/tasks.json` contenía la tarea (FR-010, CA-15).
+| Tarea | Estado | Commit | Pruebas | Fecha | Notas |
+|---|---|---|---|---|---|
+| T001–T004 | ⏳ Pendiente | — | — | — | — |
+| T005–T013 | ⏳ Pendiente | — | — | — | — |
+| T014–T017 | ⏳ Pendiente | — | — | — | — |
+| T018–T021 | ⏳ Pendiente | — | — | — | — |
+| T022–T024 | ⏳ Pendiente | — | — | — | — |
+| T025–T027 | ⏳ Pendiente | — | — | — | — |
+| T028–T029 | ⏳ Pendiente | — | — | — | — |
+| T030 | ⏳ Pendiente | — | — | — | — |
+| T031 | ⏳ Pendiente | — | — | — | — |
+| T032–T034 | ⏳ Pendiente | — | — | — | — |
 
-## 7. Desviaciones del proceso (honestidad del registro)
+## 8. Registro de cambios a la spec durante la implementación
 
-- El código de la iteración se subió al repositorio en **un commit inicial**, y no en un commit por tarea como recomienda la guía. Para la iteración 2 se exigirá un commit por tarea que cite su ID (por ejemplo `T018: changeStatus con TransitionError`).
+| Fecha | Descubrimiento | Cambio en la spec o el plan | Tarea |
+|---|---|---|---|
+| — | *(sin entradas: la implementación no ha comenzado)* | — | — |
 
-## 8. Cómo reproducir
+## 9. Prerrequisitos del entorno
 
-```bash
-npm test
-npm run coverage
-npm start
-```
+| Herramienta | Versión | Uso |
+|---|---|---|
+| Docker Engine + Compose v2 | ≥ 24 / ≥ 2.20 | Topología completa |
+| Node.js | 22 LTS | `bff`, `admin-svc`, `shell`, Playwright |
+| Python | 3.12 | `auth-svc` |
+| App autenticadora TOTP | cualquiera (RFC 6238) | Pruebas manuales de US2 |
+| `nmap` o `ss`, `autocannon` | — | CA-18, NFR-008 |
+
+## 10. Riesgos de ejecución
+
+| Riesgo | Mitigación |
+|---|---|
+| Las cookies `__Host-` no funcionan sobre HTTP en local | Probar siempre a través de Caddy con TLS interno (`https://localhost`) |
+| Diferencias entre la validación de JWT en TS y en Python | Un conjunto de **vectores de prueba compartidos** (tokens válidos e inválidos) en `tests/vectors/` que usan ambos lenguajes |
+| La iteración crece más de lo previsto | Lo que no sea esencial (NFR-008, rate limit fino) se puede pasar a la iteración siguiente, registrándolo en §8 |
 
 ---
 
-# Documento de Auditoría – Validación, Cobertura y Convergencia (Iteración 1)
+**Elaborado por:** Kleber Enrique Chávez Oscullo · **Revisión (puerta G4):** pendiente de ejecución
+
+
+---
+
+# Documento de Auditoría: Cobertura y Convergencia (Iteración 1)
 
 > **Fase SDD:** 5 – Validar | **Comando Spec Kit:** `/speckit-converge` (auditoría de cobertura, *Speckit-coverage*)
-> **Rama:** `001-gestion-tareas` | **Fecha de auditoría:** 2026-10-22
-> **Auditado contra:** [`constitution.md`](./01_Constitucion_speckit-constitution.md) · [`spec.md`](./02_Especificacion_speckit-specify.md) · [`plan.md`](./03_Planificacion_speckit-plan.md) · [`tasks.md`](./04_Tareas_speckit-tasks.md)
+> **Autor:** Kleber Enrique Chávez Oscullo | **Rama:** `001-nucleo-sesion-segura` | **Fecha de auditoría:** 2026-10-22
+> **Auditado contra:** documento de arquitectura de la tesis (D1–D12, diagramas 1–10, hallazgos de LoginSWS #1–#16) · [`constitution.md`](./01_Constitucion_speckit-constitution.md) · [`spec.md`](./02_Especificacion_speckit-specify.md) · [`plan.md`](./03_Planificacion_speckit-plan.md) · [`tasks.md`](./04_Tareas_speckit-tasks.md) · [`implement.md`](./05_Implementacion_speckit-implement.md)
 
 ---
 
 ## 1. Dictamen
 
-# ✅ ESTADO: CONVERGED
+| Dimensión | Estado |
+|---|---|
+| **Especificación** (constitución → spec → plan → tareas) | ✅ **CONVERGED (documental)**: cobertura completa y consistente con la arquitectura, con 2 preguntas abiertas asignadas |
+| **Implementación** (código → pruebas → cobertura) | ⏳ **NO INICIADA**: no hay código, así que no se puede medir la cobertura de código |
+| **Estado global de la iteración** | 🟡 **NOT CONVERGED: pendiente de implementación (G4) y de validación (G5)** |
 
-El resultado cumple **cada criterio de aceptación** de la especificación, el diseño técnico y los siete principios de la Constitución. No quedan hallazgos críticos ni mayores abiertos.
+> Esta auditoría verifica la **cobertura de la especificación**: que cada decisión de arquitectura y cada hallazgo de LoginSWS en alcance tenga requisito, diseño, tarea y prueba planificada. La **cobertura de código** (líneas y ramas) y la ejecución de los criterios de aceptación se auditarán al terminar T034.
 
-| Dimensión                                                   | Resultado                          |
-| ------------------------------------------------------------ | ---------------------------------- |
-| Cobertura de código (líneas / ramas / funciones)           | **100 % / 100 % / 100 %** ✅ |
-| Pruebas automatizadas                                        | **36 / 36 pasan** ✅         |
-| Requisitos funcionales con prueba trazable (ID en el nombre) | **12 / 12** ✅               |
-| Requisitos no funcionales verificados                        | **5 / 5** ✅                 |
-| Criterios de aceptación (CA-01 a CA-15) verificados         | **15 / 15** ✅               |
-| Tareas completadas con su "Hecho cuando…"                   | **26 / 26** ✅               |
-| Principios de la Constitución                               | **7 / 7** ✅                 |
-| Puertas de revisión (G0 a G5)                               | **6 / 6** ✅                 |
-
----
-
-## 2. Cobertura de código
-
-`npm run coverage` (Node.js 22.23.2; incluye `src/**` y excluye `src/server.js`, que es solo el arranque):
-
-```
-# tests 36 | suites 8 | pass 36 | fail 0
-# --------------------------------------------------------------------
-# file                       | line % | branch % | funcs % | uncovered
-# --------------------------------------------------------------------
-#  domain/task.js            | 100.00 |   100.00 |  100.00 |
-#  http/app.js               | 100.00 |   100.00 |  100.00 |
-#  repository/taskRepository | 100.00 |   100.00 |  100.00 |
-#  services/taskService.js   | 100.00 |   100.00 |  100.00 |
-# --------------------------------------------------------------------
-# all files                  | 100.00 |   100.00 |  100.00 |
-```
-
-| Métrica  | Umbral (Constitución III) | Obtenido | Estado |
-| --------- | -------------------------- | -------- | ------ |
-| Líneas   | ≥ 90 %                    | 100 %    | ✅     |
-| Ramas     | ≥ 85 %                    | 100 %    | ✅     |
-| Funciones | ≥ 90 %                    | 100 %    | ✅     |
-
-**Exclusión justificada:** `src/server.js` (16 líneas, solo `listen()`) se verificó con la validación manual (§5).
+| Métrica documental | Resultado |
+|---|---|
+| Decisiones base D1–D12 con tratamiento definido | **12 / 12** (7 cubiertas, 3 parciales y 2 diferidas a la spec 002 con justificación) |
+| Hallazgos de LoginSWS en alcance cerrados por requisitos | **9 / 9** (#1, #5, #7, #8, #9, #11, #12, #13 y #14), más 1 parcial (#16) |
+| Requisitos con ID y formato EARS | **25 FR + 9 NFR** |
+| Requisitos cubiertos por ≥ 1 tarea | **34 / 34** |
+| Requisitos funcionales con ≥ 1 criterio de aceptación | **25 / 25** |
+| Criterios de aceptación con tarea de prueba asignada | **22 / 22** |
+| Diagramas de la arquitectura con tratamiento en el plan | **10 / 10** (8 usados y 2 diferidos) |
+| Principios de la Constitución verificados en el plan | **10 / 10 aplicables** (VI no aplica) |
+| Puertas de revisión | G0–G3 con checklist completo · G4–G5 pendientes |
 
 ---
 
-## 3. Trazabilidad requisito → diseño → tarea → código → prueba
+## 2. Cobertura de las decisiones base de la arquitectura (D1–D12)
 
-| Req.    | Diseño    | Tareas                 | Código                                | Pruebas (nombre con el ID)                                                                | ✔ |
-| ------- | ---------- | ---------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- | -- |
-| FR-001  | Modelo §5 | T004, T005, T009, T011 | `validateTaskInput`, `isValidDate` | 7 pruebas `[FR-001]`                                                                    | ✅ |
-| FR-002  | Modelo §5 | T005, T009             | `createTask`                         | `[FR-002][FR-003] asigna id…`, `[FR-001][FR-002] US1…`                              | ✅ |
-| FR-003  | Modelo §5 | T005                   | `PRIORITIES`                         | `[FR-003] rechaza prioridad inválida`, `[FR-002][FR-003]…`                          | ✅ |
-| FR-004  | ADR-04     | T007, T010, T011       | `ValidationError` → 400             | 7 pruebas `[FR-004]`                                                                    | ✅ |
-| FR-005  | ADR-07     | T013, T014             | `list()` + `PRIORITY_WEIGHT`       | `[FR-005] US2: lista ordenada…`                                                        | ✅ |
-| FR-006  | §6        | T013–T015             | `list(filters)`                      | `[FR-006] US2: filtra…`, `[FR-006][FR-004]…`, `[FR-006] 400 con filtro inválido` | ✅ |
-| FR-007  | ADR-03     | T016, T018, T019       | `canTransition`, `changeStatus`    | 4 pruebas `[FR-007]`                                                                    | ✅ |
-| FR-008  | ADR-03     | T016, T017             | `update()`                           | 4 pruebas `[FR-008]`                                                                    | ✅ |
-| FR-009  | §6        | T020, T021             | `remove()`                           | `[FR-009][FR-011] US4…` + flujo `[US1-US4]`                                          | ✅ |
-| FR-010  | ADR-02     | T022                   | `persist()` / `load()`             | `[FR-010] persiste y recarga…`, `[FR-010] tolera un archivo vacío`                  | ✅ |
-| FR-011  | ADR-04     | T014, T020             | `NotFoundError` → 404               | `[FR-009][FR-011]…` + flujo `[US1-US4]`                                              | ✅ |
-| FR-012  | §6        | T007, T023             | enrutador → 404/405                   | `[FR-012] 404 en rutas desconocidas y 405…`                                            | ✅ |
-| NFR-001 | §6        | T007                   | `send()` UTF-8                       | `[NFR-001][NFR-004] GET /health…`                                                      | ✅ |
-| NFR-002 | ADR-07     | T024                   | filtro/orden en memoria                | `[NFR-002] lista 1 000 tareas…` → p95 < 200 ms ✅                                     | ✅ |
-| NFR-003 | §8        | T025                   | —                                     | `npm run coverage` → 100 %                                                             | ✅ |
-| NFR-004 | ADR-06     | T007, T023             | `readJson`, `errorResponse`        | `[NFR-004] 413…`, `[NFR-004] 500…`, `[NFR-001][NFR-004]…`                        | ✅ |
-| NFR-005 | ADR-01     | T002                   | `package.json` sin `dependencies`  | inspección                                                                               | ✅ |
+| ID | Decisión | Requisitos | Diseño | Tareas | Estado |
+|---|---|---|---|---|---|
+| D1 | BFF con cookie `__Host-sid`, ningún token en el navegador | FR-003, FR-007, FR-009 | plan §5, ADR-03 | T016, T020, T021, T032 | ✅ Cubierta |
+| D2 | Mismo origen por rutas | Constitución III | plan §4, §9 | T013 | ✅ Cubierta *(ver AUD-03)* |
+| D3 | `authFetch` / cliente GraphQL + `X-CSRF-Token` | FR-010, FR-011, FR-018 | plan §6, ADR-07 | T022, T023, T026 | ✅ Cubierta |
+| D4 | Logout multipestaña con `BroadcastChannel` | FR-018 | plan §4 (shell) | T026, T032 | ✅ Cubierta |
+| D5 | Token interno ES256, `aud` único, ≤ 5 min | FR-012, FR-014 | plan §7, ADR-09 | T008–T011, T023, T024 | ✅ Cubierta |
+| D6 | Red interna; solo el proxy publica puertos; Zero Trust declarado | NFR-003 | plan §10 | T004, T033 | ✅ Cubierta (mTLS declarado fuera de alcance) |
+| D7 | GraphQL en el BFF; plan B sin supergrafo | FR-010 a FR-016 | ADR-02 | T023 | 🟡 Parcial: plan B; el supergrafo depende de S1 (spec 004) |
+| D8 | La imagen facial no viaja por GraphQL | — | — | — | ⏭️ Diferida (spec 002): no hay biometría en esta iteración |
+| D9 | Segundo factor decidido en el servidor | FR-003 a FR-008 | plan §5, ADR-01 | T014–T021 | 🟡 Parcial: ruta TOTP completa; la ruta facial va en la spec 002 |
+| D10 | Plantillas biométricas cifradas y LOPDP | — | — | — | ⏭️ Diferida (spec 002) |
+| D11 | Límites de intentos | FR-020, FR-021 | plan §8 (`estado_bloqueo`) | T020, T028 | 🟡 Parcial: contraseña y TOTP; los contadores faciales (5 → 30 s, 50 → deshabilitar) van en la spec 002 |
+| D12 | BD por servicio y auditoría con `correlation_id` | FR-024, FR-025, NFR-007 | plan §8, §10 | T007, T031 | ✅ Cubierta |
 
-### Criterios de aceptación
+## 3. Cobertura de los hallazgos de Proyecto_LoginSWS (diagrama 9)
 
-| CA           | Prueba que lo verifica                                                                                      | ✔ |
-| ------------ | ----------------------------------------------------------------------------------------------------------- | -- |
-| CA-01        | `[FR-001][FR-002] US1: crea y recupera una tarea` · `[US1-US4] flujo completo` (201)                   | ✅ |
-| CA-02        | `[FR-002][FR-003] asigna id, valores por defecto y timestamps`                                            | ✅ |
-| CA-03        | `[FR-001] exige title…` · `[FR-001] rechaza fechas inexistentes…` · `[FR-004] 400 con detalles…` | ✅ |
-| CA-04        | `[FR-004] 400 con JSON mal formado`                                                                       | ✅ |
-| CA-05, CA-06 | `[FR-005] US2: lista ordenada por fecha de entrega y prioridad`                                           | ✅ |
-| CA-07        | `[FR-006] US2: filtra por estado, prioridad y materia…`                                                  | ✅ |
-| CA-08        | `[FR-006] 400 con filtro inválido`                                                                       | ✅ |
-| CA-09        | `[FR-008] US3: edita campos y actualiza updatedAt`                                                        | ✅ |
-| CA-10, CA-11 | `[FR-007] US3: cambia estado respetando transiciones` · `[FR-007] 409…`                               | ✅ |
-| CA-12        | `[FR-008] no permite fijar status al crear/editar`                                                        | ✅ |
-| CA-13        | `[US1-US4] flujo completo` (204) · `[FR-009][FR-011] US4…`                                            | ✅ |
-| CA-14        | `[FR-009][FR-011] US4: elimina tarea y luego no existe`                                                   | ✅ |
-| CA-15        | `[FR-010] persiste y recarga tareas desde disco` + validación manual                                     | ✅ |
+| Hallazgo | Severidad | Requisito que lo cierra | Tarea | Estado en la iteración 1 |
+|---|---|---|---|---|
+| #1 2FA solo en el cliente | Crítica | FR-003, FR-004, FR-007 | T016, T017, T020 | ✅ Cerrado para la ruta TOTP |
+| #2 Fotos en GitHub | Crítica | — | — | ⏭️ Spec 002 |
+| #3 Anti-spoofing incorrecto | Crítica | — | — | ⏭️ Spec 002 |
+| #4 Liveness en el cliente | Crítica | — | — | ⏭️ Spec 002 |
+| #5 Clave JWT por defecto | Crítica | NFR-004 | T005, T006 | ✅ Cerrado |
+| #6 Enrolamiento sin autenticación | Alta | — | — | ⏭️ Spec 002 |
+| #7 Cambio de contraseña sin la actual | Alta | FR-023 | T030 | ✅ Cerrado |
+| #8 IDOR | Alta | FR-015 | T024 | ✅ Cerrado (en `admin-svc`; se replica en cada subgrafo) |
+| #9 Sin rate limiting | Alta | FR-020, FR-021, FR-022 | T020, T028, T029 | ✅ Cerrado |
+| #10 Oráculo de unicidad | Alta | — | — | ⏭️ Spec 002 |
+| #11 HTTP plano | Media | NFR-001 | T013 | ✅ Cerrado |
+| #12 JWT en `localStorage` | Media | FR-003, FR-009 | T016, T021, T032 | ✅ Cerrado |
+| #13 Enumeración | Media | FR-002 | T014, T015 | ✅ Cerrado |
+| #14 Fuga de detalles | Media | NFR-006 | T031 | ✅ Cerrado |
+| #15 Path traversal | Baja | — | — | ⏭️ Spec 002 (sistema de archivos biométrico) |
+| #16 Supply chain / Swagger | Baja | NFR-005, Constitución IX | T002, T003, T024 | 🟡 Parcial: Swagger e introspección off; SRI de MediaPipe en la spec 003 |
 
----
+**Resumen:** de los 16 hallazgos, **9 se cierran**, **1 es parcial** y **6 se difieren** a la spec 002. Todos los diferidos son biométricos y dependen del spike S3, por lo que **ningún hallazgo queda sin destino**.
 
-## 4. Auditoría contra la Constitución
+## 4. Trazabilidad requisito → criterio de aceptación → tarea de prueba
 
-| Principio                         | Verificación                                                                                  | Resultado           |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------- |
-| I. La spec es la fuente de verdad | El *spec drift* detectado (404/405) se resolvió **editando la spec** (FR-012)         | ✅                  |
-| II. Arquitectura por capas        | `domain` solo importa `node:crypto`; no hay dependencias inversas; errores tipados         | ✅                  |
-| III. Requisitos verificables      | 36/36 pruebas llevan el ID en el nombre; cobertura del 100 %                                   | ✅                  |
-| IV. Incrementos pequeños         | 26 tareas atómicas con "Hecho cuando…" *(ver la observación AUD-05)*                      | ✅ con observación |
-| V. Seguridad                      | Validación, 10 KB → 413, 500 genérico, `nosniff`, configuración por variables de entorno | ✅                  |
-| VI. Contratos                     | 7/7 rutas coinciden con `plan.md` §6; formato de error uniforme                             | ✅                  |
-| VII. Todo versionado              | Specs y código en el mismo repositorio y en el mismo commit                                   | ✅                  |
+| Requisito | CA | Tarea de prueba | Requisito | CA | Tarea de prueba |
+|---|---|---|---|---|---|
+| FR-001 | CA-01 | T014 | FR-014 | CA-10, CA-11 | T010, T024 |
+| FR-002 | CA-02 | T014 | FR-015 | CA-12 | T024 |
+| FR-003 | CA-01 | T016 | FR-016 | CA-22 | T023 |
+| FR-004 | CA-03 | T017 | FR-017 | CA-13 | T025 |
+| FR-005 | CA-04 | T018 | FR-018 | CA-13 | T026, T032 |
+| FR-006 | CA-05 | T018 | FR-019 | CA-14 | T012, T027 |
+| FR-007 | CA-04 | T020 | FR-020 | CA-20 | T028 |
+| FR-008 | CA-06 | T020 | FR-021 | CA-15 | T020 |
+| FR-009 | CA-07 | T021 | FR-022 | CA-21 | T029 |
+| FR-010 | CA-08 | T022 | FR-023 | CA-16 | T030 |
+| FR-011 | CA-08 | T022 | FR-024 | CA-17 | T031 |
+| FR-012 | CA-09 | T008, T023 | FR-025 | CA-17 | T031 |
+| FR-013 | CA-19 | T009, T033 | | | |
 
----
+| NFR | Verificación planificada | Tarea |
+|---|---|---|
+| NFR-001, NFR-002 | `curl -I` (cabeceras) | T013 |
+| NFR-003 | Escaneo de puertos (CA-18) | T004, T033 |
+| NFR-004 | Arranque sin secret → falla | T005, T006 |
+| NFR-005 | `/docs` → 404; introspección deshabilitada | T003, T024 |
+| NFR-006 | Captura de logs y respuestas de error | T031 |
+| NFR-007 | Revisión de los `GRANT` por servicio | T004, T007 |
+| NFR-008 | autocannon: p95 < 50 ms | T033 |
+| NFR-009 | Reporte de cobertura por servicio | T034 |
 
-## 5. Validación más allá de las pruebas
+## 5. Cobertura de los diagramas de la arquitectura
 
-La guía advierte sobre la **falsa sensación de verificación** ("pasan los tests, así que funciona"). Por eso también se validó a mano:
+| Diagrama | Tratamiento | Dónde |
+|---|---|---|
+| 1. Contexto C4 | ✅ Usado (actores, frontera; SMTP como *stub*) | spec §1, plan §4 |
+| 2. Contenedores C4 | ✅ Usado (subconjunto Z0/Z1/Z2/Z4) | plan §4 |
+| 3. Login biométrico | ✅ Usado en su **variante TOTP** | plan §5 |
+| 4. Propagación de sesión | ✅ Usado (con `admin-svc` como subgrafo) | plan §6 |
+| 5. DFD / STRIDE | ✅ Usado (ver §6 de esta auditoría) | — |
+| 6. Modelo de datos | ✅ Usado (subconjunto de `auth-db` y Redis) | plan §8 |
+| 7. Enrolamiento biométrico | ⏭️ Diferido (spec 002) | — |
+| 8. Ciclo de vida de la sesión | ✅ Usado (6 de 9 estados; los biométricos van en la spec 002) | spec FR-003, FR-004, FR-007, FR-019 |
+| 9. Antes / después | ✅ Usado (§3 de esta auditoría) | — |
+| 10. Despliegue | ✅ Usado (subconjunto de redes y servicios) | plan §10 |
 
-| Validación                                               | Resultado                                           |
-| --------------------------------------------------------- | --------------------------------------------------- |
-| Arranque real (`npm start`)                             | ✅ "TaskFlow API escuchando…"                      |
-| Flujo real con `curl`: registrar una tarea              | ✅ 201 con UUID, `pendiente`                      |
-| Persistencia real en `data/tasks.json`                  | ✅ La tarea está en el archivo                     |
-| Medición de rendimiento con 1 000 tareas (50 peticiones) | ✅ p50 = 15,1 ms · p95 = 17,9 ms · máx = 51,0 ms |
+## 6. Revisión STRIDE de los elementos en alcance (diagrama 5)
 
----
+| Elemento / flujo | Amenaza | Control especificado | Req. | Residual |
+|---|---|---|---|---|
+| P3 `bff` | **S** robo de cookie | HttpOnly, Secure, SameSite=Strict, `__Host-`; hash del `sid` en Redis | FR-007, ADR-06 | XSS en el shell puede *usar* la sesión (no robarla) → CSP (NFR-002) |
+| P3 `bff` | **T** CSRF | Token sincronizador + `Origin` + exigir JSON | FR-010, FR-011 | Bajo |
+| P3 `bff` | **E** sesión pendiente usada como activa | Cookie y almacén separados; guard | FR-004, ADR-03 | Bajo |
+| F5 `bff` → `auth-svc` | **I** intercepción interna | Red interna, `aud` único | NFR-003, FR-012 | **mTLS no cubierto** (declarado, REC-1) |
+| A6 / P6 subgrafo | **S** reutilización lateral del token; **E** escalamiento | `aud` por servicio, ≤ 5 min, rol + propiedad | FR-012, FR-014, FR-015 | Bajo |
+| P4 `auth-svc` | **D** fuerza bruta | Rate limit en el borde + contadores + bloqueo | FR-020 a FR-022 | DoS por bloqueo de cuentas legítimas (ver AUD-02) |
+| P4 `auth-svc` | **I** enumeración | Respuesta uniforme + hash ficticio | FR-002, ADR-05 | Bajo |
+| D6 secrets | **I** exposición de claves | Docker secrets; arranque fallido; rotación por `kid` | NFR-004, plan §7 | Bajo |
+| D5 auditoría | **R** negación de acciones | `correlation_id`, tabla de solo inserción | FR-024 | Bajo |
+| A9 secreto TOTP | **I** filtración de `auth-db` | AES-256-GCM con `key_id` | ADR-11 | Bajo |
 
-## 6. Revisión de antipatrones (guía SDD §12)
+## 7. Auditoría contra la Constitución
 
-| Antipatrón                        | ¿Presente?                               | Evidencia                                                                     |
-| ---------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------- |
-| Deriva de la spec (*spec drift*) | ⚠️ Se detectó y se **corrigió** | Faltaba FR-012 en la spec; se agregó                                         |
-| Sobre-especificación              | ❌ No                                     | Las specs son proporcionales a 4 historias                                    |
-| Spec que es código disfrazado     | ❌ No                                     | `spec.md` no menciona tecnología; el *cómo* está en `plan.md`        |
-| Aprobar sin leer                   | ❌ No                                     | Cada puerta tiene su checklist completada                                     |
-| Falsa sensación de verificación  | ❌ No                                     | Validación manual en §5                                                     |
-| Waterfall encubierto               | ❌ No                                     | Solo se especificó la funcionalidad 001; los usuarios van en la iteración 2 |
-| Specs huérfanas                   | ❌ No                                     | Una sola carpeta de spec, vigente                                             |
+| Principio | Verificación documental | Resultado |
+|---|---|---|
+| I. Spec como fuente de verdad | Las tareas y ADR citan sus requisitos; las preguntas abiertas están registradas | ✅ |
+| II. Ningún token en el navegador | FR-003, FR-009 y SC-001; prueba e2e T032 | ✅ |
+| III. Mismo origen | Rutas en Caddy (T013) | ✅ *(AUD-03)* |
+| IV. Zero Trust declarado | FR-012/FR-014 y NFR-003; mTLS declarado | ✅ |
+| V. 2.º factor en el servidor | La transición a ACTIVA solo ocurre tras `auth-svc` (FR-007) | ✅ (ruta TOTP) |
+| VI. Datos biométricos | — | N/A (spec 002) |
+| VII. BD por servicio y auditoría | NFR-007, FR-024, FR-025 | ✅ |
+| VIII. Errores genéricos | FR-002, NFR-006 | ✅ |
+| IX. Secretos y supply chain | NFR-004, NFR-005, versiones fijadas (T002, T003) | ✅ |
+| X. Pruebas trazables | Cada CA tiene su tarea de prueba; convención `[FR-xxx]` | ✅ (por ejecutar) |
+| XI. Incrementos pequeños | 34 tareas, un commit por tarea | ✅ |
 
----
+## 8. Revisión de antipatrones (guía SDD §12)
 
-## 7. Hallazgos
+| Antipatrón | ¿Presente? | Evidencia |
+|---|---|---|
+| Deriva de la spec (*spec drift*) | ❌ No aplica todavía | No hay código; el registro de cambios está preparado (`implement.md` §8) |
+| Sobre-especificación | ⚠️ Riesgo moderado | 34 tareas para un esqueleto; se justifica por ser la base de seguridad de toda la tesis |
+| Spec que es código disfrazado | ❌ No | `spec.md` describe comportamiento; nombres de clases y librerías solo en `plan.md` |
+| Aprobar sin leer | ⚠️ Pendiente | Las firmas del tutor en G1–G3 están en blanco y deben completarse antes de implementar |
+| Falsa sensación de verificación | ❌ No | Se planifican e2e, escaneo de puertos y demostración manual (`implement.md` §6) |
+| Waterfall encubierto | ❌ No | Solo se especifica la funcionalidad 001; 002–005 están en la hoja de ruta |
+| Specs huérfanas | ❌ No | Una sola spec activa |
 
-| ID     | Severidad       | Descripción                                                                         | Estado                                    |
-| ------ | --------------- | ------------------------------------------------------------------------------------ | ----------------------------------------- |
-| AUD-01 | 🔴 Mayor        | Cuerpos > 10 KB cortaban la conexión en lugar de responder 413.                     | ✅ Corregido (ADR-06)                     |
-| AUD-02 | 🟡 Menor        | Rama muerta en `update()` (cobertura de ramas de 97,37 %).                         | ✅ Corregido                              |
-| AUD-03 | 🟡 Menor        | *Spec drift*: 404/405 implementados sin requisito.                                 | ✅ Corregido (FR-012)                     |
-| AUD-04 | 🟡 Menor        | NFR-002 solo se verificaba a mano.                                                   | ✅ Corregido (prueba `[NFR-002]`, T024) |
-| AUD-05 | 🟢 Observación | El código se subió en un solo commit, no en uno por tarea.                         | Aceptado; se exige en la iteración 2     |
-| AUD-06 | 🟢 Observación | El JSON no soporta varios procesos escribiendo a la vez (riesgo de `plan.md` §9). | Aceptado; BD en la iteración 2           |
+## 9. Hallazgos de la auditoría
 
-**Hallazgos críticos o mayores abiertos: 0**
+| ID | Severidad | Descripción | Acción | Estado |
+|---|---|---|---|---|
+| AUD-01 | 🔴 Bloqueante para G5 | No hay implementación: no se pueden medir la cobertura de código ni la ejecución de los CA. | Ejecutar T001–T034 según `implement.md` | ⏳ Abierto |
+| AUD-02 | 🟡 Menor | El umbral de bloqueo por contraseña (Q3) no está fijado en la arquitectura; un umbral bajo permite bloquear cuentas ajenas a propósito (DoS). | Que el tutor confirme el valor de 10; evaluar un desbloqueo temporal en lugar de manual | ⏳ Abierto (asignado) |
+| AUD-03 | 🟡 Menor | La decisión D2 (mismo origen) no tiene un criterio de aceptación propio. | Agregar CA-23: "una petición con `Origin` de otro dominio a `/bff/*` no recibe cabeceras CORS" | ⏳ Abierto |
+| AUD-04 | 🟡 Menor | Q1 (OIDC o aserción propietaria) sigue abierta; ADR-04 es provisional. | Decidir antes de S2; si se elige OIDC, enmendar el plan | ⏳ Abierto (asignado) |
+| AUD-05 | 🟢 Observación | NFR-008 (< 50 ms p95) es una meta propuesta, sin línea base. | Medir una línea base en T033 y ajustar el valor si hace falta | Aceptado |
+| AUD-06 | 🟢 Observación | SMTP es un *stub* en esta iteración: la notificación de bloqueo no llega a un correo real. | Integrar SMTP real en la spec 005 | Aceptado |
 
-## 8. Historial del ciclo de convergencia
+**Hallazgos críticos en la especificación: 0.** El único bloqueante (AUD-01) corresponde a la fase de implementación, no a la calidad de los documentos.
 
-| Ciclo | Resultado                            | Motivo                                                                         |
-| ----- | ------------------------------------ | ------------------------------------------------------------------------------ |
-| 1     | ❌ No converge                       | Prueba 413 en rojo; cobertura de ramas < 100 %                                 |
-| 2     | ✅ Converge (contra Spec Kit)        | 35/35 pruebas, 100 % de cobertura                                              |
-| 3     | ❌ No converge (contra la guía SDD) | *Spec drift* (FR-012), NFR-002 no automatizado y pruebas sin ID              |
-| 4     | ✅ **CONVERGED**               | 36/36 pruebas con ID, 100 % de cobertura, spec actualizada y puertas completas |
+## 10. Historial de convergencia
+
+| Ciclo | Fecha | Resultado | Motivo |
+|---|---|---|---|
+| 1 | 2026-10-22 | 🟡 Especificación CONVERGED · implementación no iniciada | Cobertura documental completa; quedan abiertos AUD-01 a AUD-04 |
+| 2 | — | *(pendiente)* | Tras T034: cobertura de código, CA ejecutados y cierre de AUD-01 |
 
 ---
 
 ## ✅ Puerta G5 — Checklist antes de cerrar la funcionalidad
 
-- [X] Todos los criterios de aceptación se verificaron (§3: 15/15).
-- [X] La spec refleja el comportamiento final (FR-012 agregado y ADR-06 documentado).
-- [X] Las pruebas tienen nombres trazados a requisitos (36/36).
-- [X] La spec y el código se revisaron en el mismo commit.
+- [ ] Todos los criterios de aceptación se verificaron **ejecutándolos**. *(Pendiente: AUD-01)*
+- [X] La spec refleja el comportamiento esperado y es coherente con la arquitectura (§2–§5).
+- [ ] Las pruebas tienen nombres trazados a requisitos. *(Planificado con la convención `[FR-xxx]`; pendiente de ejecución)*
+- [ ] La spec y el código se revisaron en el mismo PR. *(Pendiente: no hay código)*
 
-**Aprobado por:** Product Owner + QA, 2026-10-22.
+**Dictamen:** la iteración 1 **no puede cerrarse** hasta ejecutar la implementación. La especificación queda **aprobada para implementar**.
 
-## 9. Recomendaciones para la iteración 2
-
-1. Nueva spec `002-usuarios` (autenticación y multiusuario).
-2. Migrar a SQLite o PostgreSQL, justificándolo en *Complexity Tracking*.
-3. Un commit por tarea, con su ID.
-4. Pipeline de CI (GitHub Actions) que ejecute `npm run coverage` y falle si baja del umbral.
+**Auditor / elaborado por:** Kleber Enrique Chávez Oscullo · **Revisión del tutor:** ____________________, fecha: __________

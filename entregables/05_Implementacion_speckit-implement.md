@@ -1,120 +1,127 @@
-# Reporte de Implementación – Iteración 1
+# Implementación de la Iteración 1: Guía de Ejecución
 
 > **Fase SDD:** 4 – Implementar | **Comando Spec Kit:** `/speckit-implement`
-> **Rama:** `001-gestion-tareas` | **Fecha:** 2026-10-21 / 2026-10-22
-> **Entradas:** [`tasks.md`](./04_Tareas_speckit-tasks.md) · [`plan.md`](./03_Planificacion_speckit-plan.md) · [`constitution.md`](./01_Constitucion_speckit-constitution.md) · [`AGENTS.md`](https://github.com/kechavez07/GestionSDD/blob/main/AGENTS.md)
+> **Autor:** Kleber Enrique Chávez Oscullo | **Rama:** `001-nucleo-sesion-segura` | **Fecha:** 2026-10-22
+> **Entradas:** [`tasks.md`](./04_Tareas_speckit-tasks.md) · [`plan.md`](./03_Planificacion_speckit-plan.md) · [`spec.md`](./02_Especificacion_speckit-specify.md) · [`constitution.md`](./01_Constitucion_speckit-constitution.md) · [`AGENTS.md`](https://github.com/kechavez07/GestionSDD/blob/main/AGENTS.md)
+
+> ⚠️ **Estado: PLANIFICADA, NO EJECUTADA.** Este documento define **cómo** se ejecuta la iteración 1 con un agente de IA bajo SDD: el orden, los prompts, los artefactos esperados y la verificación de cada tarea. En esta entrega **todavía no existe código**; la bitácora (§7) queda lista para registrar la ejecución.
 
 ---
 
-## 1. Resumen
+## 1. Alcance de la iteración
 
-El agente ejecutó las **26 tareas** de `tasks.md` **una a la vez**, en el orden de dependencias (Preparación → Fundamentos → US1 → US2 → US3 → US4 → Persistencia, seguridad y validación), con el ciclo **Rojo → Verde → Refactor** que exige la Constitución.
-
-| Métrica | Valor |
+| Se construye | Se deja para después |
 |---|---|
-| Tareas completadas | 26 / 26 (100 %) |
-| Código fuente (`src/`) | 5 archivos, 399 líneas |
-| Pruebas (`tests/`) | 3 archivos, 352 líneas |
-| Pruebas automatizadas | **36 pasan / 0 fallan** (8 suites) |
-| Pruebas con el ID del requisito en el nombre | 36 / 36 |
-| Dependencias externas | 0 |
-| Endpoints | 7 (6 de negocio + `/health`) |
+| `edge-proxy` (Caddy), `shell` mínimo, `bff` (NestJS), `session-store` (Redis), `auth-svc` (FastAPI), `auth-db`, `admin-svc` (NestJS), `admin-db` | `bio-svc` y biometría (002), MFE reales (003), Hive Gateway y subgrafos académico/biblioteca (004), administración (005) |
 
-## 2. Cómo se le pidió el trabajo al agente
+**Resultado esperado:** un usuario inicia sesión con contraseña + TOTP, recibe solo una cookie opaca, consulta `admin-svc` a través del `bff` con un token interno ES256 `aud=admin-svc`, y cierra sesión en todas sus pestañas.
 
-Cada tarea se pidió con el prompt de `AGENTS.md`, por ejemplo:
+## 2. Reglas de ejecución (tomadas de la Constitución)
+
+1. **Una tarea a la vez**, en el orden del grafo de `tasks.md`. Las tareas `[P]` pueden ir en paralelo en ramas distintas.
+2. **Rojo → Verde → Refactor:** primero la prueba con el ID del requisito en su nombre, luego el código mínimo, luego la limpieza.
+3. **Un commit por tarea:** `T0xx: <descripción>`.
+4. Si algo **contradice la spec** o es ambiguo, el agente **se detiene y pregunta**. Si el comportamiento cambia, **se edita primero la spec** y se registra en §8.
+5. Después de cada tarea: pruebas del servicio en verde, la tarea marcada `[X]` en `tasks.md` y una entrada en la bitácora (§7).
+
+## 3. Prompt tipo para el agente
 
 ```text
-Lee constitution.md, spec.md y plan.md de specs/001-gestion-tareas/.
-Implementa SOLO la tarea T018 de tasks.md.
-No modifiques otros archivos fuera de lo que T018 requiere.
-Al terminar, ejecuta los tests y marca T018 como completada.
-Si encuentras algo que contradice la spec, detente y pregúntame.
+Lee .specify/memory/constitution.md y specs/001-nucleo-sesion-segura/{spec,plan,tasks}.md.
+Implementa SOLO la tarea T016 de tasks.md.
+- Escribe primero las pruebas, nombradas con el ID del requisito (p. ej. "[FR-003] …").
+- No modifiques archivos fuera de lo que T016 requiere.
+- No emitas ningún token al navegador (Constitución II).
+Al terminar: ejecuta las pruebas del servicio, marca T016 como [X] y haz commit "T016: …".
+Si algo contradice la spec, detente y pregúntame.
 ```
 
-## 3. Archivos producidos (trazabilidad)
+## 4. Estructura de código esperada
 
-| Archivo | Capa | Tareas | Requisitos |
+```
+plataforma-sso-sdd/
+├── docker-compose.yml
+├── infra/
+│   ├── edge-proxy/Caddyfile
+│   └── secrets.example/            # nombres de los secrets; nunca valores reales
+├── apps/shell/                     # shell mínimo: authFetch + BroadcastChannel
+├── services/
+│   ├── bff/                        # NestJS
+│   │   └── src/{auth,session,csrf,token,graphql-proxy,jwks,config}/
+│   ├── auth-svc/                   # FastAPI
+│   │   └── app/{routers,domain,security,db,audit}/
+│   └── admin-svc/                  # NestJS (subgrafo)
+│       └── src/{auth-guard,schema,resolvers,db}/
+└── tests/e2e/                      # Playwright
+```
+
+## 5. Plan de ejecución por fase
+
+| Fase | Tareas | Entregable verificable | Comando de verificación |
 |---|---|---|---|
-| `src/domain/task.js` | Dominio | T005 | FR-001, FR-002, FR-003, FR-004, FR-007, FR-008 |
-| `src/repository/taskRepository.js` | Persistencia | T006, T022 | FR-010 |
-| `src/services/taskService.js` | Servicios | T011, T014, T017, T018, T021 | FR-005 a FR-009, FR-011 |
-| `src/http/app.js` | HTTP | T007, T012, T015, T019, T021 | FR-004, FR-012, NFR-001, NFR-004 |
-| `src/server.js` | Arranque | T008 | Constitución V |
-| `tests/domain.test.js` | Pruebas (14) | T004 | FR-001 a FR-004, FR-007, FR-008 |
-| `tests/service.test.js` | Pruebas (11) | T009, T013, T016, T020, T022 | FR-001, FR-002, FR-004 a FR-011 |
-| `tests/api.test.js` | Pruebas (11) | T010, T016, T020, T023, T024 | FR-004, FR-006, FR-007, FR-012, NFR-001, NFR-002, NFR-004 |
-| `AGENTS.md`, `CLAUDE.md` | Instrucciones | T003 | Constitución §5 |
+| 1. Preparación | T001–T004 | Monorepo y compose válido | `docker compose config` · `docker compose ps` |
+| 2. Fundamentos | T005–T013 | Secrets obligatorios, emisor y validador ES256, SessionStore, Caddy | `npm test` (bff, admin-svc) · `pytest` (auth-svc) · `curl -I https://localhost` |
+| 3. US1 | T014–T017 | Login con contraseña → sesión pendiente | `pytest -k FR-00` · `npm test -- -t "FR-003"` |
+| 4. US2 | T018–T021 | TOTP → sesión activa, `/bff/session` | `npm test -- -t "FR-007"` |
+| 5. US3 | T022–T024 | `/graphql` → `admin-svc` con un token validado | `npm test -- -t "FR-01"` |
+| 6. US4 | T025–T027 | Logout y expiración; shell con `BroadcastChannel` | `npx playwright test logout` |
+| 7. US5 | T028–T029 | Bloqueo de cuenta y rate limit | `pytest -k FR-020` · ráfaga → 429 |
+| 8. US6 | T030 | Cambio de contraseña con revocación total | `npm test -- -t "FR-023"` |
+| 9. US7 | T031 | Auditoría con `correlation_id` y logs censurados | `pytest -k FR-025` |
+| 10. Cierre | T032–T034 | E2E, puertos, rendimiento, cobertura y auditoría | `npx playwright test` · `nmap -p- localhost` · `autocannon` |
 
-## 4. Bitácora por fase
+## 6. Verificación por historia de usuario (demostración manual)
 
-| Fase | Resultado | Notas |
+| Historia | Pasos de demostración | Resultado esperado |
 |---|---|---|
-| 1. Preparación | ✅ | Estructura, `package.json` y constitución |
-| 2. Fundamentos | ✅ | `isValidDate` rechaza fechas que no existen (`2026-02-30`). El repositorio devuelve copias (ADR-05). |
-| 3. US1 Registrar | ✅ | 201 con UUID, `pendiente` y `media` por defecto. Los datos inválidos dan 400 con `details[]`. |
-| 4. US2 Consultar | ✅ | Orden por `dueDate` y luego por el peso de la prioridad. Filtro de materia sin distinguir mayúsculas. |
-| 5. US3 Editar/estado | ✅ | Endpoint de estado separado (ADR-03). Salir de `completada` da 409. |
-| 6. US4 Eliminar | ✅ | 204, o 404 si la tarea no existe. |
-| 7. Persistencia, seguridad y validación | ✅ | JSON atómico, 413, 500 genérico, rendimiento y smoke test. |
+| US1 | Iniciar sesión con contraseña en `https://localhost/sso` y revisar DevTools → Application | Solo existe la cookie `__Host-presid` (HttpOnly). No hay nada en `localStorage`. |
+| US2 | Ingresar el código de la app autenticadora | `__Host-presid` desaparece y aparece `__Host-sid` con otro valor |
+| US3 | Pulsar "Consultar panel" | Los datos se muestran. En los logs de `admin-svc` aparece `aud=admin-svc`; en el navegador no aparece ningún JWT. |
+| US3 (negativo) | Repetir la petición con `curl` sin `X-CSRF-Token` | 403; `admin-svc` no registra ninguna llamada |
+| US4 | Abrir 2 pestañas y cerrar sesión en una | La otra pestaña redirige a `/sso` |
+| US5 | Fallar la contraseña hasta el umbral | La cuenta queda `BLOQUEADO`, la respuesta sigue siendo genérica y el *stub* de SMTP registra la notificación |
+| US6 | Cambiar la contraseña con 2 sesiones abiertas | Ambas sesiones reciben 401 |
+| US7 | Revisar los logs de un flujo completo | Hay `correlation_id` en los tres servicios; no aparecen la contraseña, el código, la cookie ni el token |
 
-## 5. Verificación iterativa: lo que se descubrió al implementar
+## 7. Bitácora de ejecución
 
-La guía SDD dice: *"si se descubrió algo nuevo durante la implementación → **se actualiza la spec**, no solo el código"*. Así se aplicó:
+| Tarea | Estado | Commit | Pruebas | Fecha | Notas |
+|---|---|---|---|---|---|
+| T001–T004 | ⏳ Pendiente | — | — | — | — |
+| T005–T013 | ⏳ Pendiente | — | — | — | — |
+| T014–T017 | ⏳ Pendiente | — | — | — | — |
+| T018–T021 | ⏳ Pendiente | — | — | — | — |
+| T022–T024 | ⏳ Pendiente | — | — | — | — |
+| T025–T027 | ⏳ Pendiente | — | — | — | — |
+| T028–T029 | ⏳ Pendiente | — | — | — | — |
+| T030 | ⏳ Pendiente | — | — | — | — |
+| T031 | ⏳ Pendiente | — | — | — | — |
+| T032–T034 | ⏳ Pendiente | — | — | — | — |
 
-| # | Descubrimiento | Detectado por | Cambio en el código | Cambio en la spec/plan |
-|---|---|---|---|---|
-| 1 | Con un cuerpo > 10 KB, `req.destroy()` cortaba la conexión y el cliente veía *"fetch failed"* en lugar de 413. | Prueba `[NFR-004] 413…` en **rojo** | Se descarta el resto del cuerpo y se responde 413 | Se agregó **ADR-06** en `plan.md` |
-| 2 | Había una rama muerta en `update()` (`typeof … === 'string'`), con cobertura de ramas de 97,37 %. | `npm run coverage` | Se simplificó a `.trim()` | — (refactor sin cambio de comportamiento) |
-| 3 | Las respuestas 404/405 a rutas y métodos desconocidos estaban implementadas pero **no especificadas** (*spec drift*). | Revisión de trazabilidad | — | Se agregó **FR-012** a `spec.md` |
-| 4 | NFR-002 (rendimiento) solo se había medido a mano. | Revisión contra la guía (requisitos verificables) | Se agregó la prueba automatizada `[NFR-002]` | Se agregó la tarea **T024** |
-| 5 | El script `node --test tests/` falla en Node 22, que espera un archivo y no una carpeta. | Primera ejecución | Se cambió al patrón `"tests/**/*.test.js"` | — |
+## 8. Registro de cambios a la spec durante la implementación
 
-## 6. Evidencia
+| Fecha | Descubrimiento | Cambio en la spec o el plan | Tarea |
+|---|---|---|---|
+| — | *(sin entradas: la implementación no ha comenzado)* | — | — |
 
-### Pruebas
+## 9. Prerrequisitos del entorno
 
-```
-$ npm test
-# tests 36
-# suites 8
-# pass 36
-# fail 0
-```
+| Herramienta | Versión | Uso |
+|---|---|---|
+| Docker Engine + Compose v2 | ≥ 24 / ≥ 2.20 | Topología completa |
+| Node.js | 22 LTS | `bff`, `admin-svc`, `shell`, Playwright |
+| Python | 3.12 | `auth-svc` |
+| App autenticadora TOTP | cualquiera (RFC 6238) | Pruebas manuales de US2 |
+| `nmap` o `ss`, `autocannon` | — | CA-18, NFR-008 |
 
-Extracto con la trazabilidad en los nombres:
+## 10. Riesgos de ejecución
 
-```
-ok - [FR-005] US2: lista ordenada por fecha de entrega y prioridad
-ok - [FR-007] 409 ante transición de estado no permitida
-ok - [FR-010] persiste y recarga tareas desde disco
-ok - [NFR-002] lista 1 000 tareas filtradas en < 200 ms (p95)
-ok - [NFR-004] 500 genérico sin filtrar detalles internos
-```
+| Riesgo | Mitigación |
+|---|---|
+| Las cookies `__Host-` no funcionan sobre HTTP en local | Probar siempre a través de Caddy con TLS interno (`https://localhost`) |
+| Diferencias entre la validación de JWT en TS y en Python | Un conjunto de **vectores de prueba compartidos** (tokens válidos e inválidos) en `tests/vectors/` que usan ambos lenguajes |
+| La iteración crece más de lo previsto | Lo que no sea esencial (NFR-008, rate limit fino) se puede pasar a la iteración siguiente, registrándolo en §8 |
 
-### Validación manual del servidor real
+---
 
-```
-$ PORT=3917 node src/server.js
-TaskFlow API escuchando en http://localhost:3917
-
-$ curl -X POST localhost:3917/tasks -H "Content-Type: application/json" \
-    -d '{"title":"Entregar SDD","subject":"Gestión","dueDate":"2026-10-28","priority":"alta"}'
-{"id":"6d91c2c2-3658-4421-8884-0f01ccc878b0","title":"Entregar SDD","description":"",
- "subject":"Gestión","dueDate":"2026-10-28","priority":"alta","status":"pendiente",
- "createdAt":"2026-10-22T04:30:31.177Z","updatedAt":"2026-10-22T04:30:31.177Z"}
-```
-
-Se comprobó que `data/tasks.json` contenía la tarea (FR-010, CA-15).
-
-## 7. Desviaciones del proceso (honestidad del registro)
-
-- El código de la iteración se subió al repositorio en **un commit inicial**, y no en un commit por tarea como recomienda la guía. Para la iteración 2 se exigirá un commit por tarea que cite su ID (por ejemplo `T018: changeStatus con TransitionError`).
-
-## 8. Cómo reproducir
-
-```bash
-npm test
-npm run coverage
-npm start
-```
+**Elaborado por:** Kleber Enrique Chávez Oscullo · **Revisión (puerta G4):** pendiente de ejecución

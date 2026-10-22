@@ -1,107 +1,155 @@
-# Constitución del Proyecto TaskFlow
+# Constitución del Proyecto: Plataforma Universitaria con Microfrontends y SSO Biométrico Facial
 
 > **Fase SDD:** 0 – Principios del proyecto | **Comando Spec Kit:** `/speckit-constitution`
 > **Artefacto:** `.specify/memory/constitution.md`
-> **Versión:** 1.1.0 | **Ratificada:** 2026-10-21 | **Última enmienda:** 2026-10-22
+> **Autor:** Kleber Enrique Chávez Oscullo | **Versión:** 1.0.0 | **Ratificada:** 2026-10-22
+> **Fuente:** documento de arquitectura de la tesis (decisiones base D1–D12) y análisis técnico de Proyecto_LoginSWS (hallazgos #1–#16).
 
 ## Propósito
 
-TaskFlow es una API REST para que estudiantes universitarios registren y den seguimiento a sus tareas académicas. Esta constitución reúne las reglas **globales y no negociables** que aplican a todo el proyecto, sin importar la funcionalidad. La IA y el equipo deben respetarlas en cada fase: especificar, diseñar, generar tareas, implementar y validar.
+La plataforma es una aplicación web universitaria formada por un **shell** y cuatro **microfrontends** (SSO, administración, académico y biblioteca). Ofrece **autenticación única de dos factores**: contraseña más rostro, o TOTP como alternativa. El acceso a cada módulo depende del rol del usuario.
 
-> *Idea central de SDD:* decidir qué código debe existir es el trabajo real; escribirlo es cada vez más automatizable. Por eso las decisiones se toman **por escrito y antes** de que el agente toque un archivo.
+Esta constitución reúne las reglas **globales y no negociables** que aplican a todas las funcionalidades e iteraciones. Ninguna especificación, plan, tarea o línea de código puede contradecirla.
 
-**Nivel de rigor adoptado:** **Spec-anchored** (anclado a la especificación). La especificación se mantiene viva durante toda la vida de la funcionalidad: cuando cambia el comportamiento, **primero se edita la spec y después el código**.
+**Nivel de rigor SDD:** *spec-anchored*. La spec se mantiene viva: si cambia el comportamiento, primero se edita la spec y luego el código.
 
 ---
 
-## 1. Stack
+## 1. Stack y nomenclatura obligatoria
 
-| Componente | Decisión |
-|---|---|
-| Lenguaje | JavaScript (CommonJS) |
-| Entorno | Node.js ≥ 20 LTS (probado en 22.23) |
-| Servidor HTTP | `node:http` nativo |
-| Pruebas | `node:test` + `node:assert` + `fetch` nativo |
-| Persistencia (iteración 1) | Archivo JSON local con escritura atómica |
-| Dependencias de ejecución | **Ninguna** |
+| Componente | Rol | Tecnología |
+|---|---|---|
+| `shell` | Host de composición, sesión de UI, router de nivel superior | React + Vite *(propuesta, se valida en el spike S2)* |
+| `mf-sso` | Login, enrolamiento y captura facial | React + MediaPipe Tasks Vision (WASM local, versión fijada, SRI) |
+| `mf-admin` | Administración | Next.js (Multi-Zones bajo `/admin`) |
+| `mf-academico` | Gestión académica | React |
+| `mf-biblioteca` | Biblioteca y reservas | Angular + apollo-angular |
+| `edge-proxy` | TLS, HSTS, cabeceras de seguridad, enrutamiento, rate limiting | Caddy / Nginx |
+| `bff` | Sesión, CSRF, tokens internos, JWKS, gateway GraphQL, endpoint biométrico | NestJS + Hive Gateway |
+| `auth-svc` | Identidad, Argon2id, TOTP, roles, bloqueos, consentimiento | FastAPI |
+| `bio-svc` | Liveness, PAD, embeddings y plantillas cifradas | FastAPI + DeepFace (ArcFace) + Silent-Face |
+| `admin-svc` / `academico-svc` / `biblioteca-svc` | Subgrafos de dominio | NestJS / Spring Boot / Laravel (Lighthouse) |
+| `session-store` | Sesiones y retos efímeros | Redis |
+| `*-db` | Un almacén por servicio | PostgreSQL |
+| Despliegue | Topología completa | Docker Compose v2 con redes internas |
+
+Cambiar una tecnología de esta tabla requiere una **enmienda** (§9) y un ADR en el `plan.md` de la funcionalidad afectada.
+
+---
 
 ## 2. Principios fundamentales
 
 ### I. La especificación es la fuente de verdad (NO NEGOCIABLE)
-- No se escribe código de producción sin `spec.md`, `plan.md` y `tasks.md` aprobados en sus puertas de revisión.
-- Si el código y la spec no coinciden, uno de los dos está mal y se resuelve de forma explícita, sin ignorar la diferencia.
+- No se escribe código sin `spec.md`, `plan.md` y `tasks.md` aprobados en sus puertas de revisión.
+- Cada requisito se traza a una decisión base (D1–D12) o a un hallazgo de LoginSWS (#1–#16) cuando corresponda.
 - Si una tarea es ambigua o contradice la spec, el agente **se detiene y pregunta**.
 
-### II. Arquitectura limpia por capas
-- Dependencias en un solo sentido: `http → services → domain` y `services → repository`.
-- El **dominio** no depende de la infraestructura (ni HTTP ni sistema de archivos).
-- Los errores de dominio son **tipos** (`ValidationError`, `NotFoundError`, `TransitionError`), no strings.
-- Cada módulo tiene una sola responsabilidad. El repositorio devuelve copias, nunca referencias internas.
+### II. Ningún token en el navegador (D1, D3) (NO NEGOCIABLE)
+- El navegador solo transporta la cookie opaca `__Host-sid`, o `__Host-presid` durante el login, con `HttpOnly`, `Secure`, `SameSite=Strict` y `Path=/`.
+- Ningún JWT ni token de acceso llega a JavaScript, a `localStorage` ni a `sessionStorage` (corrige el hallazgo #12).
+- Los MFE llaman al backend solo a través del contrato del shell: `authFetch` o un cliente GraphQL con `credentials: 'include'` y la cabecera `X-CSRF-Token`.
 
-### III. Requisitos verificables y pruebas trazables (NO NEGOCIABLE)
-- Cada requisito tiene un ID (`FR-xxx`, `NFR-xxx`) y al menos una prueba automatizada.
-- **El nombre de cada prueba lleva el ID del requisito** que verifica, por ejemplo `[FR-007] 409 ante transición…`.
-- Ciclo Rojo → Verde → Refactor.
-- Cobertura mínima sobre `src/` (sin contar `server.js`): **líneas ≥ 90 %, ramas ≥ 85 %, funciones ≥ 90 %**.
+### III. Mismo origen por rutas (D2)
+- Un solo dominio y un solo certificado TLS: `/`, `/sso`, `/admin`, `/academico`, `/biblioteca`, `/bff/*` y `/graphql`.
+- **Prohibido** CORS con credenciales.
 
-### IV. Incrementos pequeños
-- Se implementa **una tarea a la vez**. Cada tarea debe poder revisarse en minutos.
-- Cada tarea tiene su criterio "**Hecho cuando…**".
+### IV. Zero Trust reducido y declarado (D5, D6)
+- El `bff` **no reenvía** la identidad del usuario tal cual. Por cada llamada emite un JWT **ES256**, `typ=at+jwt`, con vida **≤ 5 min** y un `aud` **único** del servicio destino.
+- Cada backend valida `alg` (lista blanca), `iss`, `aud`, `typ` y `exp` contra el JWKS interno del `bff`, y autoriza por rol con **fallo cerrado**.
+- Solo `edge-proxy` publica puertos (443, y 80 que redirige a 443). Los backends, las bases de datos y `bio-svc` no publican puertos.
+- Se declara el alcance según NIST SP 800-207A: REC-4/REC-5 cubiertos, REC-2/REC-3 parciales y REC-1 (mTLS) **no cubierto**, que queda como trabajo futuro.
 
-### V. Seguridad por diseño
-- Validación estricta de entradas (tipos, longitudes y enumerados).
-- Límite de 10 KB para el cuerpo de las peticiones.
-- Las respuestas 5xx **no exponen** detalles internos.
-- Cabeceras `Content-Type` explícita y `X-Content-Type-Options: nosniff`.
-- Ningún secreto en el código. La configuración va en variables de entorno (`PORT`, `DATA_FILE`).
+### V. El segundo factor se decide en el servidor (D9, D11) (NO NEGOCIABLE)
+- La cookie de sesión se emite **solo después de los dos factores**: contraseña y rostro, o contraseña y TOTP (corrige el hallazgo #1).
+- El cliente (MediaPipe) solo guía al usuario; **nunca decide**. La prueba de vida usa un nonce de un solo uso generado y consumido en el servidor (corrige el hallazgo #4).
+- Límites de intentos: **5 fallos faciales consecutivos → espera de 30 s**; **50 fallos acumulados → biometría deshabilitada**, acceso solo por TOTP y reenrolamiento.
 
-### VI. Contratos explícitos y errores consistentes
-- Siempre se responde JSON, con códigos HTTP semánticos (200, 201, 204, 400, 404, 405, 409, 413, 500).
-- Los errores tienen la forma `{ "error": string, "details"?: string[] }`.
+### VI. Protección de datos biométricos – LOPDP Ecuador (D8, D10)
+- **Nunca se guardan imágenes faciales**, ni en disco ni en logs (corrige el hallazgo #2). Solo se guardan embeddings cifrados con **AES-256-GCM**.
+- El consentimiento es **explícito, versionado y revocable**, y siempre existe una alternativa no biométrica (TOTP).
+- La imagen facial **no viaja por GraphQL**. Usa un endpoint binario dedicado `/bff/auth/face/*`.
+- `bio-svc` está aislado en su propio segmento de red y su propia base de datos, y **solo `auth-svc`** puede llamarlo.
 
-### VII. Todo versionado y especificación viva
-- Las specs viven en el repositorio junto al código y se revisan **en el mismo commit o PR** que el código.
-- Si durante la implementación se descubre algo nuevo, **se actualiza la spec**, no solo el código.
+### VII. Base de datos por servicio y auditoría limpia (D12)
+- Cada servicio es dueño exclusivo de su almacén, con credenciales distintas. Entre bases solo hay **referencias lógicas**.
+- Toda acción relevante se audita con `correlation_id` (`X-Request-Id`). **Nunca** se registran contraseñas, tokens, secretos TOTP ni datos biométricos.
+
+### VIII. Errores genéricos y sin enumeración
+- Las respuestas de autenticación son uniformes en mensaje y en tiempo, para que no revelen si existe una cuenta (corrige el hallazgo #13).
+- Las respuestas de error no incluyen trazas, `str(e)` ni rutas internas. El detalle queda solo en la auditoría (corrige el hallazgo #14).
+
+### IX. Secretos y cadena de suministro
+- Las claves (ES256, AES, contraseñas de bases de datos, SMTP) viven en **Docker secrets**. Si falta un secreto, el servicio **no arranca** (corrige el hallazgo #5).
+- Dependencias con versión fijada y activos con **SRI**. **Prohibido** `@latest` y los CDN sin integridad. Swagger e introspección GraphQL quedan **deshabilitados en producción** (corrige el hallazgo #16).
+
+### X. Requisitos verificables y pruebas trazables
+- Cada requisito tiene un ID (`FR-xxx`, `NFR-xxx`) y al menos una prueba planificada. **El nombre de cada prueba lleva el ID del requisito.**
+- Cada servicio tiene pruebas unitarias, de integración y de seguridad (casos negativos: token con `aud` incorrecto, CSRF ausente, sesión pendiente usada como activa, etc.).
+- Cobertura mínima por servicio: **líneas ≥ 85 %, ramas ≥ 80 %**. En los módulos de seguridad (sesión, CSRF, emisión y validación de tokens, contraseña, TOTP): **ramas ≥ 90 %**.
+
+### XI. Incrementos pequeños, una funcionalidad a la vez
+- Se especifica **por funcionalidad**, no todo el producto de golpe.
+- Se implementa **una tarea a la vez**, con un commit por tarea que cite su ID.
+
+---
 
 ## 3. Prohibido
 
-- ❌ Agregar dependencias sin justificarlas en `plan.md` (sección *Complexity Tracking*).
-- ❌ Escribir código que no se pueda trazar a una tarea de `tasks.md`.
-- ❌ Hacer cambios grandes de golpe: un commit equivale a una tarea o a un grupo pequeño de tareas.
-- ❌ Aprobar una fase **sin leerla**, porque eso es *vibe coding* con más pasos.
-- ❌ Especificar todo el producto de una vez (*waterfall* encubierto). Se especifica por funcionalidad.
-- ❌ Exponer trazas de error o rutas internas al cliente.
+- ❌ Emitir cualquier credencial con acceso a datos antes de completar el segundo factor.
+- ❌ Guardar tokens en el navegador, o enviar JWT de usuario a un MFE.
+- ❌ Persistir imágenes faciales o registrarlas en logs.
+- ❌ Usar `@authenticated` o `@requiresScopes` del router GraphQL como **único** control de seguridad (D7). La seguridad no depende del router.
+- ❌ Publicar puertos de backends o bases de datos.
+- ❌ Que un MFE llame directamente a un backend sin pasar por el `bff`.
+- ❌ Agregar dependencias sin justificarlas en el `plan.md` (*Complexity Tracking*).
+- ❌ Aprobar una fase sin leerla.
 
-## 4. Puertas de revisión humanas
+## 4. Spikes y decisiones condicionadas
 
-La IA propone y el humano decide. Ninguna fase avanza sin la aprobación que se indica:
+| Spike | Pregunta | Afecta | Regla |
+|---|---|---|---|
+| **S1** | ¿Federación GraphQL completa (Hive Gateway) o BFF sin supergrafo (plan B)? | D7 | Mientras no haya un go, se usa el **plan B**: el BFF enruta a un endpoint GraphQL por módulo. |
+| **S2** | ¿Mecanismo de carga de remotos (Module Federation, Native Federation, single-spa)? ¿Compatibilidad de Next.js y Angular? | Shell, MFE | El contrato `authFetch` y `BroadcastChannel` es independiente del mecanismo. |
+| **S3** | ¿Umbral τ de ArcFace y resultados de PAD aceptables? | D9 | Si es no-go, **plan B**: AWS Face Liveness solo para detección de vida, con consentimiento específico por transferencia internacional. |
+
+Cada spike termina con un registro **go/no-go** que se adjunta al `plan.md` de la funcionalidad correspondiente.
+
+## 5. Puertas de revisión humanas
 
 | Puerta | Artefacto | Aprueba | Criterio |
 |---|---|---|---|
-| G0 | `constitution.md` | Equipo | Consenso |
-| G1 | `spec.md` (requisitos) | Product Owner | Checklist de §15 de la guía (requisitos) |
-| G2 | `plan.md` (diseño) | Líder técnico | Checklist de diseño |
-| G3 | `tasks.md` | Líder técnico | Checklist de tareas |
-| G4 | Implementación | Revisor de código | Pruebas en verde y revisión del diff |
-| G5 | Auditoría / validación | Product Owner + QA | Checklist de cierre y estado **CONVERGED** |
+| G0 | `constitution.md` | Autor de la tesis + tutor | Consenso |
+| G1 | `spec.md` | Tutor (rol de Product Owner) | Checklist de requisitos |
+| G2 | `plan.md` | Tutor (rol de líder técnico) | Checklist de diseño, coherente con D1–D12 |
+| G3 | `tasks.md` | Autor de la tesis | Checklist de tareas |
+| G4 | Implementación | Revisor de código | Pruebas en verde y diff revisado |
+| G5 | Auditoría | Tutor | Checklist de cierre y estado CONVERGED |
 
-## 5. Instrucciones para el agente de IA
+## 6. Definición de "Terminado"
 
-Están en `AGENTS.md` y `CLAUDE.md`. En resumen: leer la constitución y la spec de la funcionalidad, implementar **solo** la tarea indicada, ejecutar las pruebas, marcar la tarea y detenerse si algo contradice la spec.
+1. Todas las tareas están marcadas `[X]` y cumplen su "Hecho cuando…".
+2. Las pruebas de todos los servicios afectados pasan, y la cobertura cumple el Principio X.
+3. Cada FR/NFR tiene al menos una prueba con su ID en el nombre.
+4. Las pruebas negativas de seguridad (Principios II, IV, V y VIII) pasan.
+5. `docker compose up` levanta la topología y solo el puerto 443 (y el 80 de redirección) está publicado.
+6. La spec refleja el comportamiento final y la auditoría indica **CONVERGED**.
 
-## 6. Definición de "Terminado" (Definition of Done)
+## 7. Hoja de ruta por funcionalidades
 
-1. Todas las tareas de `tasks.md` están marcadas `[X]` y cumplen su "Hecho cuando…".
-2. `npm test` pasa al 100 %.
-3. `npm run coverage` cumple los umbrales del Principio III.
-4. Cada requisito (FR/NFR) tiene al menos una prueba que lleva su ID en el nombre.
-5. La spec refleja el comportamiento final (no hay *spec drift*).
-6. La auditoría indica estado **CONVERGED**, sin hallazgos críticos ni mayores abiertos.
+| Spec | Funcionalidad | Depende de |
+|---|---|---|
+| **001** | Núcleo de sesión segura: contraseña + TOTP, BFF, token interno y un subgrafo | — |
+| 002 | Segundo factor biométrico: `bio-svc`, liveness, PAD, ArcFace y enrolamiento | 001, S3 |
+| 003 | Shell + microfrontends heterogéneos (React, Next.js, Angular) | 001, S2 |
+| 004 | Subgrafos académico y biblioteca, y supergrafo GraphQL | 001, S1 |
+| 005 | Administración: usuarios, roles, revocación y reenrolamiento | 001, 002 |
 
-## 7. Gobernanza
+## 8. Instrucciones para el agente de IA
 
-- La constitución está **por encima** de cualquier otra práctica del proyecto.
+Están en `AGENTS.md` y `CLAUDE.md`.
+
+## 9. Gobernanza
+
+- Esta constitución está **por encima** de cualquier otra práctica del proyecto.
 - **Enmiendas:** se proponen por escrito, se aprueban en G0 y se versionan con SemVer (MAYOR: elimina o redefine un principio; MENOR: agrega uno; PARCHE: aclaraciones).
-- **Historial:**
-  - 1.0.0 (2026-10-21): versión inicial.
-  - 1.1.0 (2026-10-22): se agregan el nivel de rigor, el stack, la lista de prohibiciones, las puertas de revisión y la trazabilidad en los nombres de las pruebas.
+- **Historial:** 1.0.0 (2026-10-22), versión inicial derivada de la arquitectura de la tesis.
